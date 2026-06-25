@@ -149,7 +149,7 @@ const $ = s => document.querySelector(s);
 const byCat = {};           // category -> items[]
 const esc = s => (s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
-fetch('./data.json').then(r => r.json()).then(d => {
+fetch('./data.json', { cache: 'no-cache' }).then(r => r.json()).then(d => {
   DATA = d;
   for (const it of d.items) for (const c of it.categories) (byCat[c] ||= []).push(it);
   renderLookup(d.pokemon[0]);
