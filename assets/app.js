@@ -78,8 +78,59 @@
     `
   };
 
+  const PokemonDetail = {
+    props: {
+      pokemon: { type: Object, required: true },
+      showNav: { type: Boolean, default: false }
+    },
+    emits: ['filter', 'habitat', 'step'],
+    methods: {
+      pad(id) { return String(id).padStart(3, '0'); },
+      habStyle(h) { return { background: HAB_COLOR[h] || '#3a4663', color: '#fff' }; }
+    },
+    template: `
+      <div class="panel" style="display:flex;gap:16px;align-items:center">
+        <img :src="pokemon.icon" :alt="pokemon.name" style="width:84px;height:84px;object-fit:contain;flex:none">
+        <div style="flex:1">
+          <div class="row" style="gap:10px;align-items:baseline;flex-wrap:wrap">
+            <button v-if="showNav" class="chip" style="padding:2px 9px" @click="$emit('step', -1)" title="Previous Pokémon">◀</button>
+            <button v-if="showNav" class="chip" style="padding:2px 9px" @click="$emit('step', 1)" title="Next Pokémon">▶</button>
+            <span class="muted">#{{ pad(pokemon.id) }}</span>
+            <b style="font-size:20px">{{ pokemon.name }}</b>
+            <span class="badge hb" :style="{ ...habStyle(pokemon.habitat), cursor: 'pointer' }" title="Find Pokémon in this habitat" @click="$emit('filter', 'habitat', pokemon.habitat)">{{ pokemon.habitat }}</span>
+            <span v-if="pokemon.flavor" class="badge" style="cursor:pointer" title="Find Pokémon with this flavor" @click="$emit('filter', 'flavor', pokemon.flavor)">{{ pokemon.flavor }} flavors</span>
+          </div>
+          <div class="row" style="flex-wrap:wrap;gap:6px;margin-top:10px">
+            <span v-for="cat in pokemon.favorites" :key="cat" class="tag" style="cursor:pointer" :title="'Find ' + cat + ' Pokémon'" @click="$emit('filter', 'favorite', cat)">{{ cat }}</span>
+          </div>
+          <div v-if="pokemon.spawns && pokemon.spawns.length" class="row" style="flex-wrap:wrap;gap:6px;margin-top:8px">
+            <span class="muted">Habitats &amp; Locations</span>
+            <span v-for="spawn in pokemon.spawns" :key="spawn.slug" class="tag spawn" style="cursor:pointer" :title="'How to make ' + spawn.name" @click="$emit('habitat', spawn.slug)">{{ spawn.name }}</span>
+          </div>
+          <template v-if="pokemon.find">
+            <div class="row" style="flex-wrap:wrap;gap:6px;margin-top:8px">
+              <span class="muted">Rarity</span><span class="badge" style="cursor:pointer" @click="pokemon.find.rarity && $emit('filter', 'rarity', pokemon.find.rarity)">{{ pokemon.find.rarity || '—' }}</span>
+              <template v-if="pokemon.find.time && pokemon.find.time.length">
+                <span class="muted" style="margin-left:6px">Time</span>
+                <span v-for="time in pokemon.find.time" :key="'t-' + time" class="tag" style="cursor:pointer" @click="$emit('filter', 'time', time)">{{ time }}</span>
+              </template>
+              <template v-if="pokemon.find.weather && pokemon.find.weather.length">
+                <span class="muted" style="margin-left:6px">Weather</span>
+                <span v-for="weather in pokemon.find.weather" :key="'w-' + weather" class="tag" style="cursor:pointer" @click="$emit('filter', 'weather', weather)">{{ weather }}</span>
+              </template>
+            </div>
+            <div v-if="pokemon.find.locations && pokemon.find.locations.length" class="row" style="flex-wrap:wrap;gap:6px;margin-top:8px">
+              <span class="muted">Location</span>
+              <span v-for="loc in pokemon.find.locations" :key="loc" class="tag" style="cursor:pointer" @click="$emit('filter', 'location', loc)">{{ loc }}</span>
+            </div>
+          </template>
+        </div>
+      </div>
+    `
+  };
+
   createApp({
-    components: { ItemCard, PokemonCard },
+    components: { ItemCard, PokemonCard, PokemonDetail },
     data() {
       return {
         tabs: TABS,

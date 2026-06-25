@@ -141,43 +141,7 @@
     <template v-else>
       <section id="lookup" v-show="activeTab === 'lookup'">
         <template v-if="currentPokemon">
-          <div class="panel" style="display:flex;gap:16px;align-items:center">
-            <img :src="currentPokemon.icon" :alt="currentPokemon.name" style="width:84px;height:84px;object-fit:contain;flex:none">
-            <div style="flex:1">
-              <div class="row" style="gap:10px;align-items:baseline;flex-wrap:wrap">
-                <button class="chip" style="padding:2px 9px" @click="lookupStep(-1)" title="Previous Pokémon">◀</button>
-                <button class="chip" style="padding:2px 9px" @click="lookupStep(1)" title="Next Pokémon">▶</button>
-                <span class="muted">#{{ pad(currentPokemon.id) }}</span>
-                <b style="font-size:20px">{{ currentPokemon.name }}</b>
-                <span class="badge hb" :style="{ ...habStyle(currentPokemon.habitat), cursor: 'pointer' }" title="Find Pokémon in this habitat" @click="filterBy('habitat', currentPokemon.habitat)">{{ currentPokemon.habitat }}</span>
-                <span v-if="currentPokemon.flavor" class="badge" style="cursor:pointer" title="Find Pokémon with this flavor" @click="filterBy('flavor', currentPokemon.flavor)">{{ currentPokemon.flavor }} flavors</span>
-              </div>
-              <div class="row" style="flex-wrap:wrap;gap:6px;margin-top:10px">
-                <span v-for="cat in currentPokemon.favorites" :key="cat" class="tag" style="cursor:pointer" :title="'Find ' + cat + ' Pokémon'" @click="filterBy('favorite', cat)">{{ cat }}</span>
-              </div>
-              <div v-if="currentPokemon.spawns && currentPokemon.spawns.length" class="row" style="flex-wrap:wrap;gap:6px;margin-top:8px">
-                <span class="muted">Habitats &amp; Locations</span>
-                <span v-for="spawn in currentPokemon.spawns" :key="spawn.slug" class="tag spawn" style="cursor:pointer" :title="'How to make ' + spawn.name" @click="openHabitat(spawn.slug)">{{ spawn.name }}</span>
-              </div>
-              <template v-if="currentPokemon.find">
-                <div class="row" style="flex-wrap:wrap;gap:6px;margin-top:8px">
-                  <span class="muted">Rarity</span><span class="badge" style="cursor:pointer" @click="currentPokemon.find.rarity && filterBy('rarity', currentPokemon.find.rarity)">{{ currentPokemon.find.rarity || '—' }}</span>
-                  <template v-if="currentPokemon.find.time && currentPokemon.find.time.length">
-                    <span class="muted" style="margin-left:6px">Time</span>
-                    <span v-for="time in currentPokemon.find.time" :key="'time-' + time" class="tag" style="cursor:pointer" @click="filterBy('time', time)">{{ time }}</span>
-                  </template>
-                  <template v-if="currentPokemon.find.weather && currentPokemon.find.weather.length">
-                    <span class="muted" style="margin-left:6px">Weather</span>
-                    <span v-for="weather in currentPokemon.find.weather" :key="'weather-' + weather" class="tag" style="cursor:pointer" @click="filterBy('weather', weather)">{{ weather }}</span>
-                  </template>
-                </div>
-                <div v-if="currentPokemon.find.locations && currentPokemon.find.locations.length" class="row" style="flex-wrap:wrap;gap:6px;margin-top:8px">
-                  <span class="muted">Location</span>
-                  <span v-for="loc in currentPokemon.find.locations" :key="loc" class="tag" style="cursor:pointer" @click="filterBy('location', loc)">{{ loc }}</span>
-                </div>
-              </template>
-            </div>
-          </div>
+          <pokemon-detail :pokemon="currentPokemon" show-nav @filter="filterBy" @habitat="openHabitat" @step="lookupStep"></pokemon-detail>
           <div class="row between">
             <span class="muted">MATCHING ITEMS</span>
             <span class="muted">{{ lookupTotal }} items across {{ currentPokemon.favorites.length }} categories</span>
@@ -201,13 +165,7 @@
         </div>
         <div class="muted">{{ sharingCountText }}</div>
         <template v-if="sharingTarget">
-          <div class="panel">
-            <div class="row between"><b>{{ sharingTarget.name }} <span class="muted">#{{ pad(sharingTarget.id) }}</span></b>
-              <span class="badge hb" :style="habStyle(sharingTarget.habitat)">{{ sharingTarget.habitat }}</span></div>
-            <div class="row" style="flex-wrap:wrap;gap:6px;margin-top:8px">
-              <span v-for="cat in sharingTarget.favorites" :key="cat" class="tag">{{ cat }}</span>
-            </div>
-          </div>
+          <pokemon-detail :pokemon="sharingTarget" @filter="filterBy" @habitat="openHabitat"></pokemon-detail>
           <template v-if="compatTiers.length">
             <template v-for="tier in compatTiers" :key="tier.n">
               <div class="sec-h"><b>{{ tier.n }}/5 shared favorites{{ tier.n === 5 ? ' — perfect roommate' : '' }}</b>
