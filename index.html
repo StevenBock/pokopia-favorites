@@ -190,7 +190,15 @@
       </section>
 
       <section id="sharing" v-show="activeTab === 'sharing'">
-        <div class="panel"><input v-model="sharingFilter" class="minput" style="width:100%" placeholder="Search a Pokémon (e.g. Pikachu) for roommates, or filter groups by category..."></div>
+        <div class="panel ac">
+          <input v-model="sharingFilter" @input="onSharingInput" @focus="sharingOpen = true" @blur="onSharingBlur" @keydown.down.prevent="moveSharing(1)" @keydown.up.prevent="moveSharing(-1)" @keydown.enter.prevent="pickHighlightedSharing" @keydown.esc="sharingOpen = false" class="minput" style="width:100%" placeholder="Search a Pokémon for roommates, or filter groups by category...">
+          <div v-if="sharingOpen && sharingHits.length" class="acbox">
+            <div v-for="(p, i) in sharingHits" :key="p.slug" :class="{ sel: i === sharingIndex }" @mousemove="sharingIndex = i" @mousedown.prevent="pickSharing(p)" style="display:flex;align-items:center;gap:8px">
+              <img :src="p.icon" alt="" loading="lazy" style="width:24px;height:24px;object-fit:contain;flex:none">
+              <span class="muted">#{{ pad(p.id) }}</span> {{ p.name }}
+            </div>
+          </div>
+        </div>
         <div class="muted">{{ sharingCountText }}</div>
         <template v-if="sharingTarget">
           <div class="panel">

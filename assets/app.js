@@ -93,6 +93,9 @@
         globalSearchOpen: false,
         globalSearchIndex: 0,
         sharingFilter: '',
+        sharingOpen: false,
+        sharingSlug: null,
+        sharingIndex: 0,
         slots: [null, null, null, null, null],
         slotQueries: ['', '', '', '', ''],
         savedGroups: [],
@@ -168,7 +171,12 @@
         return (this.sharingFilter || '').toLowerCase().replace('#', '').trim();
       },
       sharingTarget() {
-        return this.resolveMon(this.sharingQuery);
+        return this.sharingSlug ? (this.pokemon.find(p => p.slug === this.sharingSlug) || null) : null;
+      },
+      sharingHits() {
+        const q = this.sharingQuery;
+        if (!q || this.sharingSlug) return [];
+        return this.pokemon.filter(p => p.name.toLowerCase().includes(q)).slice(0, 10);
       },
       filteredSharingGroups() {
         const q = this.sharingQuery;
@@ -182,8 +190,7 @@
         if (this.sharingTarget) {
           return `Roommates for ${this.sharingTarget.name} — same habitat (${this.sharingTarget.habitat}), ranked by shared favorites`;
         }
-        return `${this.filteredSharingGroups.length} groups with identical habitat & all 5 favorites` +
-          (this.sharingQuery ? ' — type a full Pokémon name for partial roommate matches' : '');
+        return `${this.filteredSharingGroups.length} groups with identical habitat & all 5 favorites`;
       },
       compatTiers() {
         if (!this.sharingTarget) return [];
@@ -417,13 +424,28 @@
       onGlobalBlur() {
         setTimeout(() => { this.globalSearchOpen = false; }, 150);
       },
-      resolveMon(q) {
-        if (!q) return null;
-        if (/^\d+$/.test(q)) return this.pokemon.find(p => p.id === Number(q)) || null;
-        const exact = this.pokemon.find(p => p.name.toLowerCase() === q);
-        if (exact) return exact;
-        const prefixMatches = this.pokemon.filter(p => p.name.toLowerCase().startsWith(q));
-        return prefixMatches.length === 1 ? prefixMatches[0] : null;
+      onSharingInput() {
+        this.sharingSlug = null;       // editing the text returns to search mode
+        this.sharingOpen = true;
+        this.sharingIndex = 0;
+      },
+      onSharingBlur() {
+        setTimeout(() => { this.sharingOpen = false; }, 150);
+      },
+      moveSharing(delta) {
+        const n = this.sharingHits.length;
+        if (!n) return;
+        this.sharingOpen = true;
+        this.sharingIndex = (this.sharingIndex + delta + n) % n;
+      },
+      pickHighlightedSharing() {
+        const hit = this.sharingHits[this.sharingIndex] || this.sharingHits[0];
+        if (hit) this.pickSharing(hit);
+      },
+      pickSharing(p) {
+        this.sharingSlug = p.slug;     // commit -> show roommate view
+        this.sharingFilter = p.name;
+        this.sharingOpen = false;
       },
       groupKey(group) {
         return group.map(p => p.slug).join('|');
