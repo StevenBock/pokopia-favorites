@@ -348,8 +348,10 @@
             <button class="chip" @click="clearFinder">Clear all</button>
           </div>
           <div v-for="facet in finderFacets" :key="facet.key" style="margin-bottom:10px">
-            <div class="muted" style="margin-bottom:5px">{{ facet.label }}</div>
-            <div class="row" style="flex-wrap:wrap;gap:6px">
+            <div class="muted" style="margin-bottom:5px;cursor:pointer;user-select:none" @click="toggleFacet(facet.key)">
+              {{ facetCollapsed[facet.key] ? '▸' : '▾' }} {{ facet.label }}<span v-if="facetCollapsed[facet.key] && finderSets[facet.key].length"> · {{ finderSets[facet.key].length }} selected</span>
+            </div>
+            <div v-if="!facetCollapsed[facet.key]" class="row" style="flex-wrap:wrap;gap:6px">
               <span v-for="value in facet.values" :key="facet.key + value" class="chip facet" :class="{ on: finderFacetOn(facet.key, value) }" :style="facetCount(facet.key, value) === 0 ? 'opacity:.4' : ''" @click="toggleFinderFacet(facet.key, value)">{{ value }} <span class="muted">{{ facetCount(facet.key, value) }}</span></span>
             </div>
           </div>

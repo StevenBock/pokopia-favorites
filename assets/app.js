@@ -123,6 +123,7 @@
         finderSort: 'dex',
         finderFavMatchAll: false,
         finderOwned: false,
+        facetCollapsed: { favorite: true },
         recipeSearch: '',
         modalHabitatSlug: null,
         modalHabitat: null
@@ -255,13 +256,13 @@
       },
       finderFacets() {
         return [
-          { key: 'favorite', label: 'Favorites', values: this.favoriteCategories },
           { key: 'habitat', label: 'Ideal habitat', values: this.uniq(p => [p.habitat]) },
           { key: 'rarity', label: 'Rarity', values: ['Common', 'Rare', 'Very Rare'] },
           { key: 'flavor', label: 'Flavor', values: this.uniq(p => [p.flavor]) },
           { key: 'location', label: 'Location', values: this.uniq(p => (p.find && p.find.locations) || []) },
           { key: 'time', label: 'Time', values: ['Morning', 'Day', 'Evening', 'Night'] },
-          { key: 'weather', label: 'Weather', values: ['Sun', 'Cloud', 'Rain'] }
+          { key: 'weather', label: 'Weather', values: ['Sun', 'Cloud', 'Rain'] },
+          { key: 'favorite', label: 'Favorites', values: this.favoriteCategories }
         ];
       },
       finderResults() {
@@ -585,6 +586,9 @@
         const index = list.indexOf(value);
         if (index >= 0) list.splice(index, 1);
         else list.push(value);
+      },
+      toggleFacet(key) {
+        this.facetCollapsed[key] = !this.facetCollapsed[key];
       },
       passesFinder(p, exceptKey) {                          // all active filters, optionally skipping one facet (for counts)
         const s = this.finderSets;
