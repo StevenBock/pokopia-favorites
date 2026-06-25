@@ -163,6 +163,12 @@ function renderSharing() {
       placeholder="Search a Pokémon (e.g. Pikachu) for roommates, or filter groups by category..."></div>
     <div class="muted" id="shCount"></div><div id="shList"></div>`;
   $('#shFilter').addEventListener('input', e => paintSharing(e.target.value.toLowerCase()));
+  $('#sharing').onclick = e => {                  // click a Pokémon card -> open it in Lookup
+    const el = e.target.closest('.pmon[data-goto]');
+    if (!el) return;
+    const p = DATA.pokemon.find(x => x.id === +el.dataset.goto);
+    if (p) { renderLookup(p); document.querySelector('.tabs button[data-tab="lookup"]').click(); }
+  };
   paintSharing('');
 }
 // resolve a query to a single Pokémon (dex #, exact name, or unique prefix); else null
@@ -218,7 +224,7 @@ function renderCompat(t) {
       <div class="pgrid">${tier.list.map(m => pmonCard(m.p, m.shared)).join('')}</div>`).join('')
       : `<div class="muted">No same-habitat Pokémon share any favorites with ${esc(t.name)}.</div>`);
 }
-const pmonCard = (p, shared) => `<div class="pmon"><img src="${p.icon}" alt="" loading="lazy">
+const pmonCard = (p, shared) => `<div class="pmon" data-goto="${p.id}" title="Open ${esc(p.name)} in Lookup" style="cursor:pointer"><img src="${p.icon}" alt="" loading="lazy">
   <span class="nm">${esc(p.name)}</span><span class="muted">#${String(p.id).padStart(3,'0')}</span>
   ${p.flavor ? `<span class="muted">${esc(p.flavor)} flavors</span>` : ''}
   ${shared && shared.length ? `<span class="covnames" style="text-align:center">${shared.map(esc).join(', ')}</span>` : ''}</div>`;
