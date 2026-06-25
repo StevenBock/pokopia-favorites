@@ -82,11 +82,19 @@ await pool(list, 6, async (p) => {
   p.favorites = [...seg.matchAll(/\/pokemonpokopia\/favorites\/\w+\.shtml"><u>([^<]+)<\/u>/g)].map(m => ent(m[1]))
   const fl = seg.match(/flavors\.shtml"><u>([^<]+)<\/u>/)
   p.flavor = fl ? ent(fl[1]).replace(/ flavors?$/i, '') : null
+  // "Habitats & Locations" section = the in-game spots this Pokémon spawns at
+  if (end > s0) {
+    const hEnd = html.indexOf('<h2', end + 1)
+    const hseg = html.slice(end, hEnd > end ? hEnd : end + 4000)
+    const sp = new Map()
+    for (const m of hseg.matchAll(/\/habitatdex\/([\w-]+)\.shtml">([^<]+)<\/a>/g)) if (!sp.has(m[1])) sp.set(m[1], ent(m[2]))
+    p.spawns = [...sp.values()]
+  } else p.spawns = []
 })
 
 const outPokemon = list.filter(p => !p.skip && p.habitat)
   .sort((a, b) => a.id - b.id)
-  .map(({ id, name, slug, icon, habitat, favorites, flavor }) => ({ id, name, slug, icon, habitat, favorites, flavor }))
+  .map(({ id, name, slug, icon, habitat, favorites, flavor, spawns }) => ({ id, name, slug, icon, habitat, favorites, flavor, spawns: spawns || [] }))
 const outItems = [...items.values()].sort((a, b) => a.name.localeCompare(b.name))
   .map(({ name, slug, icon, categories }) => ({ name, slug, icon, categories: [...categories].sort() }))
 
