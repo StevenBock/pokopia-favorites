@@ -45,6 +45,7 @@
   .tag { font-size:11px; font-weight:600; padding:3px 10px; border-radius:6px;
     background:var(--tag); color:var(--ink); border:1.5px solid var(--line); }
   .tag.spawn { background:var(--accent2); color:#1a1030; border-color:#5a4a86; }
+  [v-cloak] { display:none; }
   .panel { background:var(--panel); border:2px solid var(--line); border-radius:14px;
     padding:16px 18px; margin-bottom:16px; box-shadow:0 3px 12px var(--shadow); }
   .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; }
@@ -114,542 +115,258 @@
 </style>
 </head>
 <body>
-<h1>Pokémon Pokopia favorites lookup</h1>
-<div class="topbar">
-  <div class="brand">Poké<span>Opia</span></div>
-  <div class="search"><input id="globalSearch" placeholder="#001 Bulbasaur"></div>
-</div>
-<div class="tabs">
-  <button data-tab="lookup" class="active">Lookup</button>
-  <button data-tab="sharing">Sharing Groups</button>
-  <button data-tab="custom">Custom Group</button>
-  <button data-tab="items">Items</button>
-  <button data-tab="collection">Collection</button>
-  <button data-tab="planner">Island Planner</button>
-  <button data-tab="finder">Finder</button>
-</div>
-<div class="wrap">
-  <div id="lookup"></div>
-  <div id="sharing" hidden></div>
-  <div id="custom" hidden></div>
-  <div id="items" hidden></div>
-  <div id="collection" hidden></div>
-  <div id="planner" hidden></div>
-  <div id="finder" hidden></div>
-</div>
-<div id="modal" hidden><div class="modal-card" id="modalBody"></div></div>
+<div id="app" v-cloak>
+  <h1>Pokémon Pokopia favorites lookup</h1>
+  <div class="topbar">
+    <div class="brand">Poké<span>Opia</span></div>
+    <div class="search"><input v-model="globalSearch" @input="handleGlobalSearch" placeholder="#001 Bulbasaur"></div>
+  </div>
+  <div class="tabs">
+    <button v-for="tab in tabs" :key="tab.id" :data-tab="tab.id" :class="{ active: activeTab === tab.id }" @click="selectTab(tab.id)">
+      {{ tab.label }}
+    </button>
+  </div>
+  <div class="wrap">
+    <div v-if="dataError" class="note bad">Could not load data.json — serve this folder over http (e.g. <code>python3 -m http.server</code>) and run the scraper first.</div>
+    <div v-else-if="loading" class="muted">Loading data...</div>
+    <template v-else>
+      <section id="lookup" v-show="activeTab === 'lookup'">
+        <template v-if="currentPokemon">
+          <div class="panel" style="display:flex;gap:16px;align-items:center">
+            <img :src="currentPokemon.icon" :alt="currentPokemon.name" style="width:84px;height:84px;object-fit:contain;flex:none">
+            <div style="flex:1">
+              <div class="row" style="gap:10px;align-items:baseline;flex-wrap:wrap">
+                <span class="muted">#{{ pad(currentPokemon.id) }}</span>
+                <b style="font-size:20px">{{ currentPokemon.name }}</b>
+                <span class="badge hb" :style="habStyle(currentPokemon.habitat)">{{ currentPokemon.habitat }}</span>
+                <span v-if="currentPokemon.flavor" class="badge">{{ currentPokemon.flavor }} flavors</span>
+              </div>
+              <div class="row" style="flex-wrap:wrap;gap:6px;margin-top:10px">
+                <span v-for="cat in currentPokemon.favorites" :key="cat" class="tag">{{ cat }}</span>
+              </div>
+              <div v-if="currentPokemon.spawns && currentPokemon.spawns.length" class="row" style="flex-wrap:wrap;gap:6px;margin-top:8px">
+                <span class="muted">Habitats &amp; Locations</span>
+                <span v-for="spawn in currentPokemon.spawns" :key="spawn.slug" class="tag spawn" style="cursor:pointer" :title="'How to make ' + spawn.name" @click="openHabitat(spawn.slug)">{{ spawn.name }}</span>
+              </div>
+              <template v-if="currentPokemon.find">
+                <div class="row" style="flex-wrap:wrap;gap:6px;margin-top:8px">
+                  <span class="muted">Rarity</span><span class="badge">{{ currentPokemon.find.rarity || '—' }}</span>
+                  <template v-if="currentPokemon.find.time && currentPokemon.find.time.length">
+                    <span class="muted" style="margin-left:6px">Time</span>
+                    <span v-for="time in currentPokemon.find.time" :key="'time-' + time" class="tag">{{ time }}</span>
+                  </template>
+                  <template v-if="currentPokemon.find.weather && currentPokemon.find.weather.length">
+                    <span class="muted" style="margin-left:6px">Weather</span>
+                    <span v-for="weather in currentPokemon.find.weather" :key="'weather-' + weather" class="tag">{{ weather }}</span>
+                  </template>
+                </div>
+                <div v-if="currentPokemon.find.locations && currentPokemon.find.locations.length" class="row" style="flex-wrap:wrap;gap:6px;margin-top:8px">
+                  <span class="muted">Location</span>
+                  <span v-for="loc in currentPokemon.find.locations" :key="loc" class="tag">{{ loc }}</span>
+                </div>
+              </template>
+            </div>
+          </div>
+          <div class="row between">
+            <span class="muted">MATCHING ITEMS</span>
+            <span class="muted">{{ lookupTotal }} items across {{ currentPokemon.favorites.length }} categories</span>
+          </div>
+          <template v-for="cat in currentPokemon.favorites" :key="cat">
+            <div class="sec-h"><b>{{ cat }}</b><span class="muted">{{ itemsForCategory(cat).length }} items</span></div>
+            <div class="grid"><item-card v-for="item in itemsForCategory(cat)" :key="item.slug" :item="item"></item-card></div>
+          </template>
+        </template>
+      </section>
 
-<script>
-const HAB_COLOR = { Bright:'#caa53d', Warm:'#c0673a', Cool:'#3a78c0', Dark:'#5b5170',
-  Cold:'#5aa6c0', Hot:'#c0473a', Wet:'#3a8fc0', Dry:'#b08a4a', Lush:'#4aa84a' };
-const habStyle = h => `background:${HAB_COLOR[h]||'#3a4663'};color:#fff`;
+      <section id="sharing" v-show="activeTab === 'sharing'">
+        <div class="panel"><input v-model="sharingFilter" class="minput" style="width:100%" placeholder="Search a Pokémon (e.g. Pikachu) for roommates, or filter groups by category..."></div>
+        <div class="muted">{{ sharingCountText }}</div>
+        <template v-if="sharingTarget">
+          <div class="panel">
+            <div class="row between"><b>{{ sharingTarget.name }} <span class="muted">#{{ pad(sharingTarget.id) }}</span></b>
+              <span class="badge hb" :style="habStyle(sharingTarget.habitat)">{{ sharingTarget.habitat }}</span></div>
+            <div class="row" style="flex-wrap:wrap;gap:6px;margin-top:8px">
+              <span v-for="cat in sharingTarget.favorites" :key="cat" class="tag">{{ cat }}</span>
+            </div>
+          </div>
+          <template v-if="compatTiers.length">
+            <template v-for="tier in compatTiers" :key="tier.n">
+              <div class="sec-h"><b>{{ tier.n }}/5 shared favorites{{ tier.n === 5 ? ' — perfect roommate' : '' }}</b>
+                <span class="muted">{{ tier.list.length }} Pokémon</span></div>
+              <div class="pgrid">
+                <pokemon-card v-for="mate in tier.list" :key="mate.p.slug" :pokemon="mate.p" :shared="mate.shared" @open="goToLookup(mate.p.slug)"></pokemon-card>
+              </div>
+            </template>
+          </template>
+          <div v-else class="muted">No same-habitat Pokémon share any favorites with {{ sharingTarget.name }}.</div>
+        </template>
+        <template v-else>
+          <div v-for="group in filteredSharingGroups" :key="groupKey(group)" class="panel">
+            <div class="row between">
+              <b>{{ group.map(p => p.name).join(', ') }}</b>
+              <span class="row"><span class="badge hb" :style="habStyle(group[0].habitat)">{{ group[0].habitat }}</span>
+                <span class="muted">{{ group.length }} Pokémon</span></span>
+            </div>
+            <div class="row" style="flex-wrap:wrap;gap:6px;margin:8px 0">
+              <span v-for="cat in group[0].favorites" :key="cat" class="tag">{{ cat }}</span>
+            </div>
+            <div class="pgrid"><pokemon-card v-for="p in group" :key="p.slug" :pokemon="p" @open="goToLookup(p.slug)"></pokemon-card></div>
+          </div>
+          <div v-if="!filteredSharingGroups.length" class="muted">No groups match.</div>
+        </template>
+      </section>
 
-let DATA = { pokemon:[], items:[] };
-const $ = s => document.querySelector(s);
-const byCat = {};           // category -> items[]
-const esc = s => (s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-
-fetch('./data.json', { cache: 'no-cache' }).then(r => r.json()).then(d => {
-  DATA = d;
-  for (const it of d.items) for (const c of it.categories) (byCat[c] ||= []).push(it);
-  renderSharing();
-  renderCustom();
-  renderItems();
-  renderCollection();
-  renderPlanner();
-  renderFinder();
-  ['#sharing','#items','#planner','#finder'].forEach(s => $(s).addEventListener('click', gotoHandler));
-  $('#lookup').addEventListener('click', e => { const el = e.target.closest('[data-hab]'); if (el) openHabitat(el.dataset.hab); });
-  $('#modal').addEventListener('click', e => { if (e.target.id === 'modal' || e.target.id === 'modalClose') $('#modal').hidden = true; });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') $('#modal').hidden = true; });
-  applyHash();                                          // render the initial view from the URL hash
-}).catch(() => { $('#lookup').innerHTML = '<div class="note bad">Could not load data.json — serve this folder over http (e.g. <code>python3 -m http.server</code>) and run the scraper first.</div>'; });
-
-// --- tabs + history routing via the URL hash (e.g. #lookup/25, #finder) ---
-const TABS = ['lookup','sharing','custom','items','collection','planner','finder'];
-let lookupSlug = null;
-function showTab(tab) {
-  document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('active', x.dataset.tab === tab));
-  TABS.forEach(t => $('#'+t).hidden = t !== tab);
-}
-function applyHash() {                                  // single source of truth: render whatever the hash says
-  const [tab, slug] = (location.hash || '#lookup').slice(1).split('/');
-  const t = TABS.includes(tab) ? tab : 'lookup';
-  showTab(t);
-  if (t === 'lookup') {
-    const p = (slug && DATA.pokemon.find(x => x.slug === slug)) || DATA.pokemon.find(x => x.slug === lookupSlug) || DATA.pokemon[0];
-    if (p) renderLookup(p);
-  }
-}
-window.addEventListener('hashchange', applyHash);
-document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
-  location.hash = b.dataset.tab === 'lookup' ? 'lookup/' + (lookupSlug || (DATA.pokemon[0] || {}).slug) : b.dataset.tab;
-});
-
-// --- global search drives Lookup ---
-$('#globalSearch').addEventListener('input', e => {
-  const q = e.target.value.toLowerCase().replace('#','').trim();
-  if (!q) return;
-  const p = DATA.pokemon.find(p => p.name.toLowerCase().includes(q) || String(p.id).padStart(3,'0') === q.padStart(3,'0'));
-  if (p) location.hash = 'lookup/' + p.slug;
-});
-
-const itemCard = it => `<div class="card"><img src="${it.icon}" alt="" loading="lazy"><span class="nm">${esc(it.name)}</span></div>`;
-
-// ---------- TAB 1: LOOKUP ----------
-function renderLookup(p) {
-  if (!p) return;
-  lookupSlug = p.slug;
-  let total = 0;
-  const secs = p.favorites.map(cat => {
-    const its = byCat[cat] || [];
-    total += its.length;
-    return `<div class="sec-h"><b>${esc(cat)}</b><span class="muted">${its.length} items</span></div>
-      <div class="grid">${its.map(itemCard).join('')}</div>`;
-  }).join('');
-  $('#lookup').innerHTML = `
-    <div class="panel" style="display:flex;gap:16px;align-items:center">
-      <img src="${p.icon}" alt="${esc(p.name)}" style="width:84px;height:84px;object-fit:contain;flex:none">
-      <div style="flex:1">
-        <div class="row" style="gap:10px;align-items:baseline;flex-wrap:wrap">
-          <span class="muted">#${String(p.id).padStart(3,'0')}</span>
-          <b style="font-size:20px">${esc(p.name)}</b>
-          <span class="badge hb" style="${habStyle(p.habitat)}">${esc(p.habitat)}</span>
-          ${p.flavor ? `<span class="badge">${esc(p.flavor)} flavors</span>` : ''}
+      <section id="custom" v-show="activeTab === 'custom'">
+        <div class="row between" style="margin-bottom:8px">
+          <span class="muted">Select up to 5 Pokémon to see which items they share and which items span multiple favorites.</span>
+          <button class="savebtn" @click="saveCurrentGroup">＋ Save group</button>
         </div>
-        <div class="row" style="flex-wrap:wrap;gap:6px;margin-top:10px">
-          ${p.favorites.map(c => `<span class="tag">${esc(c)}</span>`).join('')}
+        <div class="savedbar">
+          <span v-if="!savedGroups.length" class="muted">No saved groups yet — pick Pokémon, then “Save group”.</span>
+          <span v-for="(group, i) in savedGroups" :key="group.name" class="chip" @click="applyGroup(group)">
+            {{ group.name }} <span class="muted">({{ group.ids.length }})</span><span class="chipx" @click.stop="deleteGroup(i)">✕</span>
+          </span>
         </div>
-        ${p.spawns && p.spawns.length ? `<div class="row" style="flex-wrap:wrap;gap:6px;margin-top:8px">
-          <span class="muted">📍 Habitats &amp; Locations</span>${p.spawns.map(s => `<span class="tag spawn" data-hab="${esc(s.slug)}" style="cursor:pointer" title="How to make ${esc(s.name)}">${esc(s.name)}</span>`).join('')}</div>` : ''}
-        ${p.find ? `<div class="row" style="flex-wrap:wrap;gap:6px;margin-top:8px">
-          <span class="muted">⭐ Rarity</span><span class="badge">${esc(p.find.rarity || '—')}</span>
-          ${p.find.time && p.find.time.length ? `<span class="muted" style="margin-left:6px">🕘 Time</span>${p.find.time.map(t => `<span class="tag">${esc(t)}</span>`).join('')}` : ''}
-          ${p.find.weather && p.find.weather.length ? `<span class="muted" style="margin-left:6px">🌤 Weather</span>${p.find.weather.map(w => `<span class="tag">${esc(w)}</span>`).join('')}` : ''}
+        <div class="slots">
+          <div v-for="(slot, i) in slots" :key="i" class="slot" :class="{ filled: slot }">
+            <span class="lab">SLOT {{ i + 1 }}</span>
+            <template v-if="slot">
+              <span class="x" @click="clearSlot(i)">✕</span>
+              <div class="row" style="margin-top:16px"><img :src="slot.icon" width="40" height="40" alt="">
+                <div><div style="font-weight:600">{{ slot.name }}</div>
+                <span class="badge hb" :style="habStyle(slot.habitat)">{{ slot.habitat }}</span></div></div>
+            </template>
+            <div v-else class="ac">
+              <input v-model="slotQueries[i]" placeholder="Search Pokémon...">
+              <div v-if="slotHits(i).length" class="acbox">
+                <div v-for="p in slotHits(i)" :key="p.slug" @mousedown.prevent="selectSlot(i, p)">#{{ pad(p.id) }} {{ p.name }}</div>
+              </div>
+            </div>
+          </div>
         </div>
-        ${p.find.locations && p.find.locations.length ? `<div class="row" style="flex-wrap:wrap;gap:6px;margin-top:8px">
-          <span class="muted">🗺 Location</span>${p.find.locations.map(l => `<span class="tag">${esc(l)}</span>`).join('')}</div>` : ''}` : ''}
+        <div v-if="selectedCustom.length < 2" class="muted">Add at least 2 Pokémon.</div>
+        <template v-else>
+          <div class="note" :class="customHabitats.length === 1 ? 'ok' : 'bad'">
+            <template v-if="customHabitats.length === 1">All {{ selectedCustom.length }} Pokémon share the <b>{{ customHabitats[0] }}</b> habitat — they can live together comfortably.</template>
+            <template v-else>Different habitats ({{ customHabitats.join(', ') }}) — they won't all be comfortable together.</template>
+          </div>
+          <div class="panel">
+            <b>Suggested minimal item set</b> <span class="muted">— {{ customCover.pick.length }} items cover every favorite of all {{ selectedCustom.length }} Pokémon</span>
+            <div class="grid" style="margin-top:8px"><item-card v-for="item in customCover.pick" :key="item.slug" :item="item"></item-card></div>
+            <div v-if="customCover.left.length" class="muted" style="margin-top:6px">No item data yet for: {{ customCover.left.join(', ') }}</div>
+          </div>
+          <div class="row between" style="margin-top:6px"><b>ITEMS COVERING MULTIPLE POKÉMON ({{ customCoverCount }})</b></div>
+          <div class="muted">Each category has items that satisfy more than one Pokémon — place one item from each to cover multiple at once.</div>
+          <template v-if="customMultiCategories.length">
+            <template v-for="sec in customMultiCategories" :key="sec.cat">
+              <div class="sec-h"><b>{{ sec.cat }}</b><span class="muted">{{ sec.items.length }} shared items</span></div>
+              <div class="grid">
+                <div v-for="item in sec.items" :key="item.slug" class="card covcard">
+                  <span class="coverbadge">{{ sec.all ? 'All ' + selectedCustom.length + ' Pokémon' : sec.covered.length + ' Pokémon' }}</span>
+                  <span class="nm" style="margin-top:4px">{{ item.name }}</span>
+                  <span class="covnames">{{ names(sec.covered) }}</span>
+                </div>
+              </div>
+            </template>
+          </template>
+          <div v-else class="muted">No favorite categories are shared by 2+ of these Pokémon.</div>
+        </template>
+      </section>
+
+      <section id="items" v-show="activeTab === 'items'">
+        <div class="panel ac"><input v-model="itemSearch" @input="itemSuggestionOpen = true" @focus="itemSuggestionOpen = true" class="minput" style="width:100%" placeholder="Search an item (e.g. Luxury bed)...">
+          <div v-if="itemSuggestionOpen && itemSuggestions.length" class="acbox">
+            <div v-for="item in itemSuggestions" :key="item.slug" @mousedown.prevent="selectItem(item)">{{ item.name }}</div>
+          </div>
+        </div>
+        <label class="tickrow muted" style="margin-bottom:12px"><input type="checkbox" v-model="itemsOwnedOnly"> Owned Pokémon only</label>
+        <div v-if="!curItem" class="muted">Pick an item to see every Pokémon that likes it.</div>
+        <template v-else>
+          <div class="panel row" style="gap:14px;align-items:center">
+            <img :src="curItem.icon" alt="" style="width:64px;height:64px;object-fit:contain;flex:none">
+            <div><b style="font-size:18px">{{ curItem.name }}</b>
+              <div class="row" style="flex-wrap:wrap;gap:6px;margin-top:6px"><span v-for="cat in curItem.categories" :key="cat" class="tag">{{ cat }}</span></div></div>
+          </div>
+          <div class="muted" style="margin:6px 0">{{ itemMatches.length }} Pokémon like this{{ itemsOwnedOnly ? ' (owned)' : '' }}</div>
+          <div class="pgrid"><pokemon-card v-for="match in itemMatches" :key="match.p.slug" :pokemon="match.p" :shared="match.m" @open="goToLookup(match.p.slug)"></pokemon-card></div>
+        </template>
+      </section>
+
+      <section id="collection" v-show="activeTab === 'collection'">
+        <div class="panel row" style="gap:10px;flex-wrap:wrap;align-items:center">
+          <input v-model="colSearch" class="minput" placeholder="Filter by name..." style="flex:1;min-width:160px">
+          <select v-model="colHab" class="minput"><option value="">All habitats</option><option v-for="hab in collectionHabitats" :key="hab" :value="hab">{{ hab }}</option></select>
+          <span class="muted">{{ owned.size }} owned · {{ filteredCollection.length }} shown · {{ pokemon.length }} total</span>
+          <button class="savebtn" @click="markFilteredOwned">Mark filtered owned</button>
+          <button class="chip" @click="unmarkFiltered">Unmark filtered</button>
+          <button class="chip" @click="clearOwned">Clear all</button>
+        </div>
+        <div class="muted" style="margin-bottom:8px">Click a Pokémon to toggle whether you own it. Owned Pokémon power the Island Planner and the “owned only” filters.</div>
+        <div class="pgrid"><pokemon-card v-for="p in filteredCollection" :key="p.slug" :pokemon="p" :owned="owned.has(p.slug)" title="Toggle owned" @open="toggleOwned(p.slug)"></pokemon-card></div>
+      </section>
+
+      <section id="planner" v-show="activeTab === 'planner'">
+        <div class="panel row" style="gap:14px;flex-wrap:wrap;align-items:center">
+          <button class="savebtn" @click="runPlanner">Plan my island</button>
+          <label class="tickrow muted">Max room size <input v-model.number="planner.maxSize" class="minput" type="number" min="2" max="12" style="width:58px"></label>
+          <label class="tickrow muted">Min shared favorites <input v-model.number="planner.minShared" class="minput" type="number" min="0" max="5" style="width:58px"></label>
+          <label class="tickrow muted"><input type="checkbox" v-model="planner.ownedOnly"> Owned only</label>
+        </div>
+        <div v-if="!plannerResult" class="muted">Mark Pokémon in the Collection tab, then “Plan my island”. (Uncheck “Owned only” to plan the whole dex.)</div>
+        <div v-else-if="plannerResult.bad" class="note bad">{{ plannerResult.message }}</div>
+        <template v-else>
+          <div class="muted" style="margin-bottom:8px">{{ plannerResult.poolCount }} Pokémon → {{ plannerResult.rooms.length }} rooms · ~{{ plannerResult.totalItems }} items total</div>
+          <div v-for="room in plannerResult.rooms" :key="room.key" class="panel">
+            <div class="row between"><b>{{ room.members.length }} Pokémon</b>
+              <span class="badge hb" :style="habStyle(room.hab)">{{ room.hab }}</span></div>
+            <div class="pgrid" style="margin:8px 0"><pokemon-card v-for="p in room.members" :key="p.slug" :pokemon="p" @open="goToLookup(p.slug)"></pokemon-card></div>
+            <div class="muted">{{ room.cover.pick.length }} items furnish this room{{ room.cover.left.length ? ' — no data for: ' + room.cover.left.join(', ') : '' }}:</div>
+            <div class="grid"><item-card v-for="item in room.cover.pick" :key="item.slug" :item="item"></item-card></div>
+          </div>
+        </template>
+      </section>
+
+      <section id="finder" v-show="activeTab === 'finder'">
+        <div class="panel">
+          <div class="row" style="gap:10px;flex-wrap:wrap;margin-bottom:12px">
+            <input v-model="finderName" class="minput" placeholder="Name contains..." style="flex:1;min-width:150px">
+            <select v-model="finderFav" class="minput"><option value="">Any favorite</option><option v-for="cat in favoriteCategories" :key="cat" :value="cat">{{ cat }}</option></select>
+            <label class="tickrow muted"><input type="checkbox" v-model="finderOwned"> Owned only</label>
+            <button class="chip" @click="clearFinder">Clear all</button>
+          </div>
+          <div v-for="facet in finderFacets" :key="facet.key" style="margin-bottom:10px">
+            <div class="muted" style="margin-bottom:5px">{{ facet.label }}</div>
+            <div class="row" style="flex-wrap:wrap;gap:6px">
+              <span v-for="value in facet.values" :key="facet.key + value" class="chip facet" :class="{ on: finderFacetOn(facet.key, value) }" @click="toggleFinderFacet(facet.key, value)">{{ value }}</span>
+            </div>
+          </div>
+        </div>
+        <div class="muted">{{ finderResults.length }} Pokémon match</div>
+        <div v-if="finderResults.length" class="pgrid"><pokemon-card v-for="p in finderResults" :key="p.slug" :pokemon="p" @open="goToLookup(p.slug)"></pokemon-card></div>
+        <div v-else class="muted">No Pokémon match these filters.</div>
+      </section>
+    </template>
+  </div>
+
+  <div id="modal" v-if="modalHabitat" @click.self="closeModal">
+    <div class="modal-card">
+      <div class="row between"><b style="font-size:18px">{{ modalHabitat.name }}</b><span class="modal-x" @click="closeModal">✕</span></div>
+      <div v-if="modalHabitat.flavor" class="muted" style="margin:6px 0 14px">{{ modalHabitat.flavor }}</div>
+      <div v-else style="height:8px"></div>
+      <div class="sec-h"><b>How to make it</b></div>
+      <div v-if="modalHabitat.reqs && modalHabitat.reqs.length" class="grid">
+        <div v-for="req in modalHabitat.reqs" :key="req.name" class="card">
+          <img v-if="req.icon" :src="req.icon" alt=""><span class="nm">{{ req.name }}</span>
+          <span v-if="req.qty" class="badge" style="margin-left:auto">×{{ req.qty }}</span>
+        </div>
       </div>
+      <div v-else class="muted">No requirement data on Serebii yet.</div>
+      <div class="muted" style="margin-top:12px"><a :href="habitatUrl(modalHabitatSlug)" target="_blank" rel="noopener">View full details on Serebii ↗</a></div>
     </div>
-    <div class="row between"><span class="muted">MATCHING ITEMS</span>
-      <span class="muted">${total} items across ${p.favorites.length} categories</span></div>
-    ${secs}`;
-}
+  </div>
+</div>
 
-// ---------- TAB 2: SHARING GROUPS ----------
-let sharingGroups = [];
-function renderSharing() {
-  const map = new Map();
-  for (const p of DATA.pokemon) {
-    const key = p.habitat + '|' + [...p.favorites].sort().join(',');
-    (map.get(key) || map.set(key, []).get(key)).push(p);
-  }
-  sharingGroups = [...map.values()].filter(g => g.length >= 2)
-    .sort((a, b) => b.length - a.length);
-  $('#sharing').innerHTML = `
-    <div class="panel"><input id="shFilter" class="minput" style="width:100%"
-      placeholder="Search a Pokémon (e.g. Pikachu) for roommates, or filter groups by category..."></div>
-    <div class="muted" id="shCount"></div><div id="shList"></div>`;
-  $('#shFilter').addEventListener('input', e => paintSharing(e.target.value.toLowerCase()));
-  paintSharing('');
-}
-// resolve a query to a single Pokémon (dex #, exact name, or unique prefix); else null
-function resolveMon(q) {
-  if (!q) return null;
-  if (/^\d+$/.test(q)) return DATA.pokemon.find(p => p.id === +q) || null;
-  const exact = DATA.pokemon.find(p => p.name.toLowerCase() === q);
-  if (exact) return exact;
-  const pre = DATA.pokemon.filter(p => p.name.toLowerCase().startsWith(q));
-  return pre.length === 1 ? pre[0] : null;
-}
-function paintSharing(q) {
-  q = (q || '').replace('#', '').trim();
-  const target = resolveMon(q);
-  if (target) return renderCompat(target);     // searched a specific Pokémon -> roommate view
-  const groups = sharingGroups.filter(g =>
-    !q || g.some(p => p.name.toLowerCase().includes(q)) || g[0].favorites.some(c => c.toLowerCase().includes(q)));
-  $('#shCount').textContent = `${groups.length} groups with identical habitat & all 5 favorites`
-    + (q ? ' — type a full Pokémon name for partial roommate matches' : '');
-  $('#shList').innerHTML = groups.map(g => {
-    const h = g[0];
-    return `<div class="panel">
-      <div class="row between">
-        <b>${g.map(p => esc(p.name)).join(', ')}</b>
-        <span class="row"><span class="badge hb" style="${habStyle(h.habitat)}">${esc(h.habitat)}</span>
-          <span class="muted">${g.length} Pokémon</span></span>
-      </div>
-      <div class="row" style="flex-wrap:wrap;gap:6px;margin:8px 0">
-        ${h.favorites.map(c => `<span class="tag">${esc(c)}</span>`).join('')}</div>
-      <div class="pgrid">${g.map(p => pmonCard(p)).join('')}</div>
-    </div>`;
-  }).join('') || '<div class="muted">No groups match.</div>';
-}
-// roommate view for one Pokémon: same habitat, grouped by # of shared favorites
-function renderCompat(t) {
-  const tf = new Set(t.favorites);
-  const mates = DATA.pokemon
-    .filter(p => p.id !== t.id && p.habitat === t.habitat)
-    .map(p => ({ p, shared: p.favorites.filter(c => tf.has(c)) }))
-    .filter(m => m.shared.length >= 1)
-    .sort((a, b) => b.shared.length - a.shared.length || a.p.id - b.p.id);
-  const tiers = [5, 4, 3, 2, 1].map(n => ({ n, list: mates.filter(m => m.shared.length === n) })).filter(x => x.list.length);
-  $('#shCount').textContent = `Roommates for ${t.name} — same habitat (${t.habitat}), ranked by shared favorites`;
-  $('#shList').innerHTML = `
-    <div class="panel">
-      <div class="row between"><b>${esc(t.name)} <span class="muted">#${String(t.id).padStart(3,'0')}</span></b>
-        <span class="badge hb" style="${habStyle(t.habitat)}">${esc(t.habitat)}</span></div>
-      <div class="row" style="flex-wrap:wrap;gap:6px;margin-top:8px">${t.favorites.map(c => `<span class="tag">${esc(c)}</span>`).join('')}</div>
-    </div>`
-    + (tiers.length ? tiers.map(tier => `
-      <div class="sec-h"><b>${tier.n}/5 shared favorites${tier.n === 5 ? ' — perfect roommate' : ''}</b>
-        <span class="muted">${tier.list.length} Pokémon</span></div>
-      <div class="pgrid">${tier.list.map(m => pmonCard(m.p, m.shared)).join('')}</div>`).join('')
-      : `<div class="muted">No same-habitat Pokémon share any favorites with ${esc(t.name)}.</div>`);
-}
-const pmonCard = (p, shared) => `<div class="pmon" data-goto="${esc(p.slug)}" title="Open ${esc(p.name)} in Lookup" style="cursor:pointer"><img src="${p.icon}" alt="" loading="lazy">
-  <span class="nm">${esc(p.name)}</span><span class="muted">#${String(p.id).padStart(3,'0')}</span>
-  ${p.flavor ? `<span class="muted">${esc(p.flavor)} flavors</span>` : ''}
-  ${shared && shared.length ? `<span class="covnames" style="text-align:center">${shared.map(esc).join(', ')}</span>` : ''}</div>`;
-
-// ---------- TAB 3: CUSTOM GROUP ----------
-let slots = [null, null, null, null, null];
-function renderCustom() {
-  $('#custom').innerHTML = `
-    <div class="row between" style="margin-bottom:8px">
-      <span class="muted">Select up to 5 Pokémon to see which items they share and which items span multiple favorites.</span>
-      <button id="cgSave" class="savebtn">＋ Save group</button>
-    </div>
-    <div id="cgSaved" class="savedbar"></div>
-    <div class="slots" id="slots"></div>
-    <div id="cgResult"></div>`;
-  $('#cgSave').onclick = saveCurrentGroup;
-  paintSaved(); paintSlots(); paintCustom();
-}
-// saved custom groups -> localStorage as {name, ids:[...]}; browser-local only, no sync.
-const LS_KEY = 'pokopia.customGroups';
-const loadGroups = () => { try { return JSON.parse(localStorage.getItem(LS_KEY)) || []; } catch { return []; } };
-const saveGroups = g => { try { localStorage.setItem(LS_KEY, JSON.stringify(g)); } catch { alert('Could not save (storage blocked).'); } };
-function saveCurrentGroup() {
-  const sel = slots.filter(Boolean);
-  if (!sel.length) return alert('Pick at least one Pokémon first.');
-  const name = (prompt('Name this group:', sel.map(p => p.name).join(', ').slice(0, 40)) || '').trim();
-  if (!name) return;
-  const groups = loadGroups().filter(g => g.name !== name);   // same name overwrites
-  groups.push({ name, ids: sel.map(p => p.slug) });
-  saveGroups(groups); paintSaved();
-}
-function applyGroup(g) {
-  slots = [null, null, null, null, null];
-  g.ids.slice(0, 5).forEach((sl, i) => slots[i] = DATA.pokemon.find(p => p.slug === sl) || null);
-  paintSlots(); paintCustom();
-}
-function paintSaved() {
-  const groups = loadGroups();
-  const bar = $('#cgSaved');
-  if (!groups.length) { bar.innerHTML = '<span class="muted">No saved groups yet — pick Pokémon, then “Save group”.</span>'; return; }
-  bar.innerHTML = groups.map((g, i) =>
-    `<span class="chip" data-load="${i}">${esc(g.name)} <span class="muted">(${g.ids.length})</span><span class="chipx" data-del="${i}">✕</span></span>`).join('');
-  bar.querySelectorAll('[data-load]').forEach(el => el.onclick = () => applyGroup(groups[+el.dataset.load]));
-  bar.querySelectorAll('[data-del]').forEach(el => el.onclick = e => {
-    e.stopPropagation();
-    const gs = loadGroups(); gs.splice(+el.dataset.del, 1); saveGroups(gs); paintSaved();
-  });
-}
-function paintSlots() {
-  $('#slots').innerHTML = slots.map((p, i) => {
-    if (p) return `<div class="slot filled"><span class="lab">SLOT ${i+1}</span>
-      <span class="x" data-rm="${i}">✕</span>
-      <div class="row" style="margin-top:16px"><img src="${p.icon}" width="40" height="40" alt="">
-        <div><div style="font-weight:600">${esc(p.name)}</div>
-        <span class="badge hb" style="${habStyle(p.habitat)}">${esc(p.habitat)}</span></div></div></div>`;
-    return `<div class="slot"><span class="lab">SLOT ${i+1}</span>
-      <div class="ac"><input data-slot="${i}" placeholder="Search Pokémon..."><div class="acbox" hidden></div></div></div>`;
-  }).join('');
-  $('#slots').querySelectorAll('[data-rm]').forEach(x => x.onclick = () => { slots[+x.dataset.rm] = null; paintSlots(); paintCustom(); });
-  $('#slots').querySelectorAll('input[data-slot]').forEach(inp => {
-    const box = inp.nextElementSibling;
-    inp.addEventListener('input', () => {
-      const q = inp.value.toLowerCase().trim();
-      const hits = q ? DATA.pokemon.filter(p => p.name.toLowerCase().includes(q)).slice(0, 8) : [];
-      box.hidden = !hits.length;
-      box.innerHTML = hits.map(p => `<div data-id="${esc(p.slug)}">#${String(p.id).padStart(3,'0')} ${esc(p.name)}</div>`).join('');
-      box.querySelectorAll('[data-id]').forEach(d => d.onclick = () => {
-        slots[+inp.dataset.slot] = DATA.pokemon.find(p => p.slug === d.dataset.id);
-        paintSlots(); paintCustom();
-      });
-    });
-  });
-}
-function paintCustom() {
-  const sel = slots.filter(Boolean);
-  const out = $('#cgResult');
-  if (sel.length < 2) { out.innerHTML = '<div class="muted">Add at least 2 Pokémon.</div>'; return; }
-
-  const habs = [...new Set(sel.map(p => p.habitat))];
-  const habNote = habs.length === 1
-    ? `<div class="note ok">✓ All ${sel.length} Pokémon share the <b>${esc(habs[0])}</b> habitat — they can live together comfortably.</div>`
-    : `<div class="note bad">✕ Different habitats (${habs.map(esc).join(', ')}) — they won't all be comfortable together.</div>`;
-
-  // categories favored by ≥2 selected
-  const catCount = {};
-  for (const p of sel) for (const c of p.favorites) (catCount[c] ||= []).push(p);
-  const multiCats = Object.keys(catCount).filter(c => catCount[c].length >= 2).sort();
-
-  let coverCount = 0;
-  const sections = multiCats.map(cat => {
-    const covered = catCount[cat];                       // selected pokemon that like this category
-    const its = byCat[cat] || [];
-    coverCount += its.length;
-    const all = covered.length === sel.length;
-    return `<div class="sec-h"><b>${esc(cat)}</b><span class="muted">${its.length} shared items</span></div>
-      <div class="grid">${its.map(it => `<div class="card covcard">
-        <span class="coverbadge">${all ? 'All '+sel.length+' Pokémon' : covered.length+' Pokémon'}</span>
-        <span class="nm" style="margin-top:4px">${esc(it.name)}</span>
-        <span class="covnames">${covered.map(p => esc(p.name)).join(', ')}</span></div>`).join('')}</div>`;
-  }).join('') || '<div class="muted">No favorite categories are shared by 2+ of these Pokémon.</div>';
-
-  out.innerHTML = habNote + greedyCover(sel) +
-    `<div class="row between" style="margin-top:6px"><b>⚲ ITEMS COVERING MULTIPLE POKÉMON (${coverCount})</b></div>
-     <div class="muted">Each category has items that satisfy more than one Pokémon — place one item from each to cover multiple at once.</div>
-     ${sections}`;
-}
-// greedy minimum item set covering every favorite category of every selected Pokémon
-// fewest items covering every favorite category across `sel` Pokémon.
-// ponytail: greedy set-cover (not provably minimal); fine for the small sets here.
-function coverItems(sel) {
-  const need = new Set();
-  for (const p of sel) for (const c of p.favorites) need.add(c);
-  const pick = [];
-  while (need.size) {
-    let best = null, gain = 0;
-    for (const it of DATA.items) {
-      const g = it.categories.filter(c => need.has(c)).length;
-      if (g > gain) { gain = g; best = it; }
-    }
-    if (!best) break;                                    // some category has no known item
-    best.categories.filter(c => need.has(c)).forEach(c => need.delete(c));
-    pick.push(best);
-  }
-  return { pick, left: [...need] };
-}
-function greedyCover(sel) {
-  const { pick, left } = coverItems(sel);
-  return `<div class="panel">
-    <b>Suggested minimal item set</b> <span class="muted">— ${pick.length} items cover every favorite of all ${sel.length} Pokémon</span>
-    <div class="grid" style="margin-top:8px">${pick.map(itemCard).join('')}</div>
-    ${left.length ? `<div class="muted" style="margin-top:6px">No item data yet for: ${left.map(esc).join(', ')}</div>` : ''}</div>`;
-}
-
-// ===================== COLLECTION (owned set) =====================
-const OWN_KEY = 'pokopia.owned.v2';   // v2: keyed by slug (v1 used non-unique ids)
-let owned = (() => { try { return new Set(JSON.parse(localStorage.getItem(OWN_KEY)) || []); } catch { return new Set(); } })();
-const saveOwned = () => { try { localStorage.setItem(OWN_KEY, JSON.stringify([...owned])); } catch {} };
-const toggleOwned = id => { owned.has(id) ? owned.delete(id) : owned.add(id); saveOwned(); };
-function goToLookup(id) { location.hash = 'lookup/' + id; }
-const gotoHandler = e => { const el = e.target.closest('.pmon[data-goto]'); if (el) goToLookup(el.dataset.goto); };
-// "how to make" popup for a habitat/location (from the Lookup spawn tags)
-function openHabitat(slug) {
-  const h = DATA.habitats && DATA.habitats[slug];
-  if (!h) return;
-  $('#modalBody').innerHTML = `
-    <div class="row between"><b style="font-size:18px">🏕️ ${esc(h.name)}</b><span class="modal-x" id="modalClose">✕</span></div>
-    ${h.flavor ? `<div class="muted" style="margin:6px 0 14px">${esc(h.flavor)}</div>` : '<div style="height:8px"></div>'}
-    <div class="sec-h"><b>How to make it</b></div>
-    ${h.reqs && h.reqs.length
-      ? `<div class="grid">${h.reqs.map(r => `<div class="card">
-          ${r.icon ? `<img src="${r.icon}" alt="">` : ''}<span class="nm">${esc(r.name)}</span>
-          ${r.qty ? `<span class="badge" style="margin-left:auto">×${r.qty}</span>` : ''}</div>`).join('')}</div>`
-      : '<div class="muted">No requirement data on Serebii yet.</div>'}
-    <div class="muted" style="margin-top:12px"><a href="https://www.serebii.net/pokemonpokopia/habitatdex/${esc(slug)}.shtml" target="_blank" rel="noopener">View full details on Serebii ↗</a></div>`;
-  $('#modal').hidden = false;
-}
-
-const colCard = p => `<div class="pmon ${owned.has(p.slug) ? 'own' : ''}" data-own="${esc(p.slug)}" style="cursor:pointer" title="Toggle owned">
-  <img src="${p.icon}" alt="" loading="lazy"><span class="nm">${esc(p.name)}</span>
-  <span class="muted">#${String(p.id).padStart(3, '0')}</span></div>`;
-function filteredCollection() {
-  const q = ($('#colSearch')?.value || '').toLowerCase().trim();
-  const hab = $('#colHab')?.value || '';
-  return DATA.pokemon.filter(p => (!q || p.name.toLowerCase().includes(q)) && (!hab || p.habitat === hab));
-}
-function updateColCount() { $('#colCount').textContent = `${owned.size} owned · ${filteredCollection().length} shown · ${DATA.pokemon.length} total`; }
-function paintCollection() { $('#colGrid').innerHTML = filteredCollection().map(colCard).join(''); updateColCount(); }
-function renderCollection() {
-  const habs = [...new Set(DATA.pokemon.map(p => p.habitat))].sort();
-  $('#collection').innerHTML = `
-    <div class="panel row" style="gap:10px;flex-wrap:wrap;align-items:center">
-      <input id="colSearch" class="minput" placeholder="Filter by name..." style="flex:1;min-width:160px">
-      <select id="colHab" class="minput"><option value="">All habitats</option>${habs.map(h => `<option>${esc(h)}</option>`).join('')}</select>
-      <span class="muted" id="colCount"></span>
-      <button id="colMark" class="savebtn">Mark filtered owned</button>
-      <button id="colUnmark" class="chip">Unmark filtered</button>
-      <button id="colClear" class="chip">Clear all</button>
-    </div>
-    <div class="muted" style="margin-bottom:8px">Click a Pokémon to toggle whether you own it. Owned Pokémon power the Island Planner and the “owned only” filters.</div>
-    <div id="colGrid" class="pgrid"></div>`;
-  $('#colSearch').addEventListener('input', paintCollection);
-  $('#colHab').addEventListener('change', paintCollection);
-  $('#colGrid').onclick = e => { const el = e.target.closest('[data-own]'); if (!el) return; const slug = el.dataset.own; toggleOwned(slug); el.classList.toggle('own', owned.has(slug)); updateColCount(); };
-  $('#colMark').onclick = () => { filteredCollection().forEach(p => owned.add(p.slug)); saveOwned(); paintCollection(); };
-  $('#colUnmark').onclick = () => { filteredCollection().forEach(p => owned.delete(p.slug)); saveOwned(); paintCollection(); };
-  $('#colClear').onclick = () => { if (confirm('Clear your whole collection?')) { owned.clear(); saveOwned(); paintCollection(); } };
-  paintCollection();
-}
-
-// ===================== ITEMS (reverse lookup) =====================
-let curItem = null;
-function renderItems() {
-  $('#items').innerHTML = `
-    <div class="panel ac"><input id="itSearch" class="minput" style="width:100%" placeholder="Search an item (e.g. Luxury bed)..."><div class="acbox" hidden></div></div>
-    <label class="tickrow muted" style="margin-bottom:12px"><input type="checkbox" id="itOwned"> Owned Pokémon only</label>
-    <div id="itResult"><div class="muted">Pick an item to see every Pokémon that likes it.</div></div>`;
-  const inp = $('#itSearch'), box = inp.nextElementSibling;
-  inp.addEventListener('input', () => {
-    const q = inp.value.toLowerCase().trim();
-    const hits = q ? DATA.items.filter(it => it.name.toLowerCase().includes(q)).slice(0, 10) : [];
-    box.hidden = !hits.length;
-    box.innerHTML = hits.map(it => `<div data-slug="${it.slug}">${esc(it.name)}</div>`).join('');
-    box.querySelectorAll('[data-slug]').forEach(d => d.onclick = () => {
-      curItem = DATA.items.find(it => it.slug === d.dataset.slug); inp.value = curItem.name; box.hidden = true; showItem();
-    });
-  });
-  $('#itOwned').addEventListener('change', showItem);
-}
-function showItem() {
-  if (!curItem) return;
-  const ownedOnly = $('#itOwned').checked;
-  const mons = DATA.pokemon.map(p => ({ p, m: p.favorites.filter(c => curItem.categories.includes(c)) }))
-    .filter(x => x.m.length && (!ownedOnly || owned.has(x.p.slug)))
-    .sort((a, b) => b.m.length - a.m.length || a.p.id - b.p.id);
-  $('#itResult').innerHTML = `
-    <div class="panel row" style="gap:14px;align-items:center">
-      <img src="${curItem.icon}" alt="" style="width:64px;height:64px;object-fit:contain;flex:none">
-      <div><b style="font-size:18px">${esc(curItem.name)}</b>
-        <div class="row" style="flex-wrap:wrap;gap:6px;margin-top:6px">${curItem.categories.map(c => `<span class="tag">${esc(c)}</span>`).join('')}</div></div>
-    </div>
-    <div class="muted" style="margin:6px 0">${mons.length} Pokémon like this${ownedOnly ? ' (owned)' : ''}</div>
-    <div class="pgrid">${mons.map(x => pmonCard(x.p, x.m)).join('')}</div>`;
-}
-
-// ===================== ISLAND PLANNER =====================
-function renderPlanner() {
-  $('#planner').innerHTML = `
-    <div class="panel row" style="gap:14px;flex-wrap:wrap;align-items:center">
-      <button id="plRun" class="savebtn">Plan my island</button>
-      <label class="tickrow muted">Max room size <input id="plSize" class="minput" type="number" min="2" max="12" value="6" style="width:58px"></label>
-      <label class="tickrow muted">Min shared favorites <input id="plMin" class="minput" type="number" min="0" max="5" value="2" style="width:58px"></label>
-      <label class="tickrow muted"><input type="checkbox" id="plOwned" checked> Owned only</label>
-    </div>
-    <div id="plResult"><div class="muted">Mark Pokémon in the Collection tab, then “Plan my island”. (Uncheck “Owned only” to plan the whole dex.)</div></div>`;
-  $('#plRun').onclick = runPlanner;
-}
-// greedily pack same-habitat Pokémon into rooms by shared favorites, then furnish each.
-// ponytail: greedy seed-and-grow clustering, not optimal partitioning; tune with the knobs.
-function runPlanner() {
-  const maxSize = Math.max(2, +$('#plSize').value || 6);
-  const minShared = Math.max(0, +$('#plMin').value || 0);
-  const ownedOnly = $('#plOwned').checked;
-  const pool = DATA.pokemon.filter(p => !ownedOnly || owned.has(p.slug));
-  if (!pool.length) {
-    $('#plResult').innerHTML = `<div class="note bad">No ${ownedOnly ? 'owned ' : ''}Pokémon to plan. Mark some in the Collection tab${ownedOnly ? ', or uncheck “Owned only”' : ''}.</div>`;
-    return;
-  }
-  const byHab = {};
-  for (const p of pool) (byHab[p.habitat] ||= []).push(p);
-  const rooms = [];
-  for (const hab of Object.keys(byHab)) {
-    const un = byHab[hab].slice();
-    while (un.length) {
-      const seed = un.shift(), fav = new Set(seed.favorites), room = [seed];
-      while (room.length < maxSize) {
-        let bi = -1, bg = -1;
-        for (let i = 0; i < un.length; i++) {
-          const g = un[i].favorites.filter(c => fav.has(c)).length;
-          if (g > bg) { bg = g; bi = i; }
-        }
-        if (bi < 0 || bg < minShared) break;
-        room.push(un.splice(bi, 1)[0]);
-      }
-      rooms.push({ hab, members: room });
-    }
-  }
-  rooms.sort((a, b) => b.members.length - a.members.length);
-  const totalItems = rooms.reduce((n, r) => n + coverItems(r.members).pick.length, 0);
-  $('#plResult').innerHTML = `<div class="muted" style="margin-bottom:8px">${pool.length} Pokémon → ${rooms.length} rooms · ~${totalItems} items total</div>`
-    + rooms.map(r => {
-      const { pick, left } = coverItems(r.members);
-      return `<div class="panel">
-        <div class="row between"><b>${r.members.length} Pokémon</b>
-          <span class="badge hb" style="${habStyle(r.hab)}">${esc(r.hab)}</span></div>
-        <div class="pgrid" style="margin:8px 0">${r.members.map(p => pmonCard(p)).join('')}</div>
-        <div class="muted">${pick.length} items furnish this room${left.length ? ` — no data for: ${left.map(esc).join(', ')}` : ''}:</div>
-        <div class="grid">${pick.map(itemCard).join('')}</div>
-      </div>`;
-    }).join('');
-}
-// ===================== FINDER (faceted filter) =====================
-let finderSets = { habitat: new Set(), flavor: new Set(), rarity: new Set(), time: new Set(), weather: new Set(), location: new Set() };
-function renderFinder() {
-  const uniq = (fn) => [...new Set(DATA.pokemon.flatMap(fn).filter(Boolean))].sort();
-  const facet = (key, label, values) => `<div style="margin-bottom:10px">
-    <div class="muted" style="margin-bottom:5px">${label}</div>
-    <div class="row" style="flex-wrap:wrap;gap:6px">${values.map(v =>
-      `<span class="chip facet${finderSets[key].has(v) ? ' on' : ''}" data-facet="${key}" data-val="${esc(v)}">${esc(v)}</span>`).join('')}</div></div>`;
-  const favCats = uniq(p => p.favorites);
-  $('#finder').innerHTML = `
-    <div class="panel">
-      <div class="row" style="gap:10px;flex-wrap:wrap;margin-bottom:12px">
-        <input id="fdName" class="minput" placeholder="Name contains..." style="flex:1;min-width:150px">
-        <select id="fdFav" class="minput"><option value="">Any favorite</option>${favCats.map(c => `<option${finderFav === c ? ' selected' : ''}>${esc(c)}</option>`).join('')}</select>
-        <label class="tickrow muted"><input type="checkbox" id="fdOwned"${finderOwned ? ' checked' : ''}> Owned only</label>
-        <button id="fdClear" class="chip">Clear all</button>
-      </div>
-      ${facet('habitat', 'Ideal habitat', uniq(p => [p.habitat]))}
-      ${facet('rarity', 'Rarity', ['Common', 'Rare', 'Very Rare'])}
-      ${facet('flavor', 'Flavor', uniq(p => [p.flavor]))}
-      ${facet('location', 'Location', uniq(p => p.find?.locations || []))}
-      ${facet('time', 'Time', ['Morning', 'Day', 'Evening', 'Night'])}
-      ${facet('weather', 'Weather', ['Sun', 'Cloud', 'Rain'])}
-    </div>
-    <div class="muted" id="fdCount"></div>
-    <div id="fdResult" class="pgrid"></div>`;
-  $('#fdName').value = finderName;
-  $('#fdName').addEventListener('input', e => { finderName = e.target.value; paintFinder(); });
-  $('#fdFav').addEventListener('change', e => { finderFav = e.target.value; paintFinder(); });
-  $('#fdOwned').addEventListener('change', e => { finderOwned = e.target.checked; paintFinder(); });
-  $('#fdClear').onclick = () => {
-    finderSets = { habitat: new Set(), flavor: new Set(), rarity: new Set(), time: new Set(), weather: new Set(), location: new Set() };
-    finderName = ''; finderFav = ''; finderOwned = false; renderFinder();
-  };
-  $('#finder').querySelectorAll('.facet').forEach(el => el.onclick = () => {
-    const set = finderSets[el.dataset.facet], v = el.dataset.val;
-    set.has(v) ? set.delete(v) : set.add(v);
-    el.classList.toggle('on', set.has(v));
-    paintFinder();
-  });
-  paintFinder();
-}
-let finderName = '', finderFav = '', finderOwned = false;
-function paintFinder() {
-  const S = finderSets;
-  const usesFind = S.rarity.size || S.time.size || S.weather.size || S.location.size;
-  const res = DATA.pokemon.filter(p => {
-    if (finderName && !p.name.toLowerCase().includes(finderName.toLowerCase())) return false;
-    if (finderFav && !p.favorites.includes(finderFav)) return false;
-    if (finderOwned && !owned.has(p.slug)) return false;
-    if (S.habitat.size && !S.habitat.has(p.habitat)) return false;
-    if (S.flavor.size && !S.flavor.has(p.flavor)) return false;
-    const f = p.find;
-    if (usesFind && !f) return false;
-    if (S.rarity.size && !(f && S.rarity.has(f.rarity))) return false;
-    if (S.time.size && !(f && f.time.some(t => S.time.has(t)))) return false;
-    if (S.weather.size && !(f && f.weather.some(w => S.weather.has(w)))) return false;
-    if (S.location.size && !(f && f.locations.some(l => S.location.has(l)))) return false;
-    return true;
-  }).sort((a, b) => a.id - b.id);
-  $('#fdCount').textContent = `${res.length} Pokémon match`;
-  $('#fdResult').innerHTML = res.map(p => pmonCard(p)).join('') || '<div class="muted">No Pokémon match these filters.</div>';
-}
-</script>
+<script src="assets/vendor/vue.global.prod.js"></script>
+<script src="assets/app.js"></script>
 </body>
 </html>
