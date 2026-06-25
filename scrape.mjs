@@ -68,7 +68,7 @@ for (const cat of cats) {
     items.set(slug, it)
   }
   // pokemon table rows: #001 ... <a href="/pokemonpokopia/pokedex/SLUG.shtml"><img src=".../small/001.png" alt="NAME Image"
-  for (const m of html.matchAll(/#(\d+)<\/td>\s*<td[^>]*><a href="\/pokemonpokopia\/pokedex\/([\w-]+)\.shtml"><img src="([^"]+)"\s+alt="([^"]+?)(?: Image)?"/g)) {
+  for (const m of html.matchAll(/#(\d+)<\/td>\s*<td[^>]*><a href="\/pokemonpokopia\/pokedex\/([^"]+?)\.shtml"><img src="([^"]+)"\s+alt="([^"]+?)(?: Image)?"/g)) {
     const slug = m[2]
     // id = sprite/national-dex number from the image filename; the "#NNN" column is just a per-page row counter
     if (!pokemon.has(slug)) pokemon.set(slug, { id: +((m[3].match(/(\d+)\.png/) || [])[1] || m[1]), name: ent(m[4]), slug, icon: BASE.replace('/pokemonpokopia','') + m[3] })
@@ -137,7 +137,7 @@ await pool([...habNames.keys()], 6, async (slug) => {
   const ai = html.indexOf('Available Pok')
   if (ai >= 0) {
     const a = html.slice(ai)
-    const names = [...a.matchAll(/fooevo"><a href="\/pokemonpokopia\/pokedex\/([\w-]+)\.shtml">[^<]+<\/a>/g)].map(m => m[1])
+    const names = [...a.matchAll(/fooevo"><a href="\/pokemonpokopia\/pokedex\/([^"]+?)\.shtml">[^<]+<\/a>/g)].map(m => m[1])
     const locs = [...a.matchAll(/<b>Location<\/b>:([\s\S]*?)<\/td>/g)].map(m => [...m[1].matchAll(/\/locations\/[\w-]+\.shtml"><u>([^<]+)<\/u>/g)].map(x => ent(x[1])))
     const rars = [...a.matchAll(/<b>Rarity<\/b>:<br \/>\s*([^<]*?)\s*<\/td>/g)].map(m => { const t = ent(m[1]); const r = t.match(/Very Rare|Rare|Common/); return r ? r[0] : t })
     const tws = [...a.matchAll(/<b>Time<\/b><\/td>[\s\S]*?<tr>([\s\S]*?)<\/table>/g)].map(m => {
@@ -153,6 +153,39 @@ await pool([...habNames.keys()], 6, async (slug) => {
 })
 for (const p of outPokemon) if (find[p.slug]) p.find = find[p.slug]
 
+// cooking meals -> recipes (Picture | Name | Description | PP | Main + Secondary ingredients | Specialty)
+const recipes = []
+const cook = await get(`${BASE}/cooking.shtml`)
+if (cook) {
+  const abs = src => src.startsWith('http') ? src : `${BASE}/${src.replace(/^\//, '')}`
+  const strip = s => ent((s || '').replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim()
+  const ci = cook.indexOf('List of Meals')
+  const close = cook.indexOf('</table>', ci)
+  const tbl = cook.slice(ci, close >= 0 ? close + 8 : cook.length)
+  let category = ''
+  for (const chunk of tbl.split(/<tr[ >]/)) {
+    const h3 = chunk.match(/<h3>([^<]+)<\/h3>/)
+    if (h3) { category = ent(h3[1]); continue }
+    const cells = [...chunk.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map(c => c[1])
+    if (cells.length < 5) continue
+    const pic = cells[0].match(/src="([^"]+)"/)
+    if (!pic) continue                                       // header / non-meal row
+    const ings = []; const seenIng = new Set()
+    for (const c of cells.slice(4, cells.length - 1)) {      // Main + Secondary cols (last col = Specialty)
+      const name = strip(c); if (!name) continue
+      const img = c.match(/src="([^"]+)"/)
+      if (!seenIng.has(name)) { seenIng.add(name); ings.push({ name, icon: img ? abs(img[1]) : null }) }
+    }
+    const pp = strip(cells[3])
+    recipes.push({
+      category, slug: (pic[1].match(/([^/]+)\.png/) || [])[1], name: strip(cells[1]), icon: abs(pic[1]),
+      description: strip(cells[2]), pp: /^\d+$/.test(pp) ? +pp : null,
+      ingredients: ings, specialty: strip(cells[cells.length - 1]) || null
+    })
+  }
+}
+console.log(`recipes: ${recipes.length}`)
+
 // mirror every referenced image into ./assets and rewrite icon paths to local
 await mkdir(new URL('./assets/pokemon/', import.meta.url), { recursive: true })
 await mkdir(new URL('./assets/items/', import.meta.url), { recursive: true })
@@ -160,6 +193,7 @@ const refs = []                                          // every icon field tha
 for (const p of outPokemon) refs.push({ obj: p, url: p.icon, sub: 'pokemon' })
 for (const it of outItems) refs.push({ obj: it, url: it.icon, sub: 'items' })
 for (const h of Object.values(habitats)) for (const r of h.reqs) if (r.icon) refs.push({ obj: r, url: r.icon, sub: 'items' })
+for (const r of recipes) { if (r.icon) refs.push({ obj: r, url: r.icon, sub: 'items' }); for (const ing of r.ingredients) if (ing.icon) refs.push({ obj: ing, url: ing.icon, sub: 'items' }) }
 const uniq = new Map()                                    // remoteUrl -> { lp, ok }
 for (const r of refs) if (!uniq.has(r.url)) uniq.set(r.url, { lp: `assets/${r.sub}/${r.url.split('/').pop()}` })
 console.log(`mirroring ${uniq.size} images...`)
@@ -173,5 +207,5 @@ console.log(`mirrored ${dl}/${uniq.size} images (${uniq.size - dl} missing on Se
 for (const r of refs) { const info = uniq.get(r.url); r.obj.icon = info.ok ? info.lp : null }  // local if mirrored, else null (missing on Serebii)
 
 await writeFile(new URL('./data.json', import.meta.url),
-  JSON.stringify({ scrapedAt: new Date().toISOString(), source: 'serebii.net', pokemon: outPokemon, items: outItems, habitats }, null, 2))
-console.log(`wrote data.json: ${outPokemon.length} pokemon, ${outItems.length} items, ${Object.keys(habitats).length} habitats, ${Object.keys(find).length} find-records`)
+  JSON.stringify({ scrapedAt: new Date().toISOString(), source: 'serebii.net', pokemon: outPokemon, items: outItems, habitats, recipes }, null, 2))
+console.log(`wrote data.json: ${outPokemon.length} pokemon, ${outItems.length} items, ${Object.keys(habitats).length} habitats, ${Object.keys(find).length} find-records, ${recipes.length} recipes`)

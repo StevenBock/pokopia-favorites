@@ -19,7 +19,8 @@
     { id: 'items', label: 'Items' },
     { id: 'collection', label: 'Collection' },
     { id: 'planner', label: 'Island Planner' },
-    { id: 'finder', label: 'Finder' }
+    { id: 'finder', label: 'Finder' },
+    { id: 'recipes', label: 'Recipes' }
   ];
   const GROUPS_KEY = 'pokopia.customGroups';
   const OWN_KEY = 'pokopia.owned.v2';
@@ -116,6 +117,7 @@
         finderName: '',
         finderFav: '',
         finderOwned: false,
+        recipeSearch: '',
         modalHabitatSlug: null,
         modalHabitat: null
       };
@@ -264,6 +266,25 @@
           if (this.finderSets.location.length && !(find && (find.locations || []).some(l => this.finderSets.location.includes(l)))) return false;
           return true;
         }).sort((a, b) => a.id - b.id);
+      },
+      recipes() {
+        return this.data.recipes || [];
+      },
+      recipeGroups() {
+        const q = this.recipeSearch.toLowerCase().trim();
+        const match = r => !q || r.name.toLowerCase().includes(q) ||
+          (r.description || '').toLowerCase().includes(q) ||
+          r.ingredients.some(i => i.name.toLowerCase().includes(q));
+        const groups = new Map();
+        for (const r of this.recipes) {
+          if (!match(r)) continue;
+          if (!groups.has(r.category)) groups.set(r.category, []);
+          groups.get(r.category).push(r);
+        }
+        return [...groups.entries()].map(([category, recipes]) => ({ category, recipes }));
+      },
+      recipeCount() {
+        return this.recipeGroups.reduce((n, g) => n + g.recipes.length, 0);
       }
     },
     async mounted() {
@@ -321,7 +342,8 @@
         }
       },
       applyHash() {
-        const [tab, slug] = (location.hash || '#lookup').slice(1).split('/');
+        const [tab, rawSlug] = (location.hash || '#lookup').slice(1).split('/');
+        const slug = rawSlug ? decodeURIComponent(rawSlug) : rawSlug;
         const nextTab = TABS.some(t => t.id === tab) ? tab : 'lookup';
         this.activeTab = nextTab;
         if (nextTab === 'lookup') {

@@ -345,6 +345,29 @@
         <div v-if="finderResults.length" class="pgrid"><pokemon-card v-for="p in finderResults" :key="p.slug" :pokemon="p" @open="goToLookup(p.slug)"></pokemon-card></div>
         <div v-else class="muted">No Pokémon match these filters.</div>
       </section>
+
+      <section id="recipes" v-show="activeTab === 'recipes'">
+        <div class="panel"><input v-model="recipeSearch" class="minput" style="width:100%" placeholder="Search meals or ingredients (e.g. Leppa, salad)..."></div>
+        <div class="muted">{{ recipeCount }} recipes</div>
+        <template v-for="grp in recipeGroups" :key="grp.category">
+          <div class="sec-h"><b>{{ grp.category }}</b><span class="muted">{{ grp.recipes.length }}</span></div>
+          <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(250px,1fr))">
+            <div v-for="r in grp.recipes" :key="r.slug" class="panel" style="margin:0">
+              <div class="row" style="gap:10px;align-items:center">
+                <img :src="r.icon" alt="" loading="lazy" style="width:48px;height:48px;object-fit:contain;flex:none">
+                <div><b>{{ r.name }}</b> <span v-if="r.pp" class="badge">PP {{ r.pp }}</span></div>
+              </div>
+              <div v-if="r.description" class="muted" style="margin:8px 0">{{ r.description }}</div>
+              <div class="row" style="flex-wrap:wrap;gap:6px">
+                <span v-for="(ing, idx) in r.ingredients" :key="idx" class="tag" style="display:inline-flex;align-items:center;gap:4px">
+                  <img v-if="ing.icon" :src="ing.icon" alt="" loading="lazy" style="width:18px;height:18px;object-fit:contain"> {{ ing.name }}
+                </span>
+              </div>
+            </div>
+          </div>
+        </template>
+        <div v-if="!recipeCount" class="muted">No recipes match.</div>
+      </section>
     </template>
   </div>
 
