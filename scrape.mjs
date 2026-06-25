@@ -102,6 +102,7 @@ const outItems = [...items.values()].sort((a, b) => a.name.localeCompare(b.name)
 const habNames = new Map()
 for (const p of outPokemon) for (const s of p.spawns) if (!habNames.has(s.slug)) habNames.set(s.slug, s.name)
 const habitats = {}
+const find = {}   // pokemonSlug -> { locations, rarity, time, weather } from "Available Pokémon" cells
 await pool([...habNames.keys()], 6, async (slug) => {
   const html = await get(`${BASE}/habitatdex/${slug}.shtml`)
   if (!html) return
@@ -123,8 +124,26 @@ await pool([...habNames.keys()], 6, async (slug) => {
     if (fm) flavor = ent(fm[1].replace(/<[^>]+>/g, ' '))
   }
   habitats[slug] = { name: habNames.get(slug), flavor, reqs }
+  // "Available Pokémon" section: column-aligned Location/Rarity/Time/Weather per Pokémon
+  const ai = html.indexOf('Available Pok')
+  if (ai >= 0) {
+    const a = html.slice(ai)
+    const names = [...a.matchAll(/fooevo"><a href="\/pokemonpokopia\/pokedex\/([\w-]+)\.shtml">[^<]+<\/a>/g)].map(m => m[1])
+    const locs = [...a.matchAll(/<b>Location<\/b>:([\s\S]*?)<\/td>/g)].map(m => [...m[1].matchAll(/\/locations\/[\w-]+\.shtml"><u>([^<]+)<\/u>/g)].map(x => ent(x[1])))
+    const rars = [...a.matchAll(/<b>Rarity<\/b>:<br \/>\s*([^<]*?)\s*<\/td>/g)].map(m => { const t = ent(m[1]); const r = t.match(/Very Rare|Rare|Common/); return r ? r[0] : t })
+    const tws = [...a.matchAll(/<b>Time<\/b><\/td>[\s\S]*?<tr>([\s\S]*?)<\/table>/g)].map(m => {
+      const tds = [...m[1].matchAll(/<td valign="top">([\s\S]*?)(?:<\/td>|<\/tr>)/g)].map(x => x[1])
+      const words = s => [...(s || '').matchAll(/<br \/>\s*([A-Za-z]+)/g)].map(y => y[1])
+      return { time: words(tds[0]), weather: words(tds[1]) }
+    })
+    for (let i = 0; i < names.length; i++) if (!find[names[i]]) find[names[i]] = {
+      locations: locs[i] || [], rarity: rars[i] || '',
+      time: tws[i] ? tws[i].time : [], weather: tws[i] ? tws[i].weather : []
+    }
+  }
 })
+for (const p of outPokemon) if (find[p.slug]) p.find = find[p.slug]
 
 await writeFile(new URL('./data.json', import.meta.url),
   JSON.stringify({ scrapedAt: new Date().toISOString(), source: 'serebii.net', pokemon: outPokemon, items: outItems, habitats }, null, 2))
-console.log(`wrote data.json: ${outPokemon.length} pokemon, ${outItems.length} items, ${Object.keys(habitats).length} habitats`)
+console.log(`wrote data.json: ${outPokemon.length} pokemon, ${outItems.length} items, ${Object.keys(habitats).length} habitats, ${Object.keys(find).length} find-records`)
