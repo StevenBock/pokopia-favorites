@@ -79,6 +79,7 @@
     box-shadow:0 6px 16px var(--shadow); margin-top:4px; }
   .acbox div { padding:7px 11px; cursor:pointer; }
   .acbox div:hover { background:var(--panel2); }
+  .acbox .sel { background:var(--accent); color:#fff; }
   .note { padding:11px 14px; border-radius:12px; margin-bottom:16px; font-weight:700;
     border:2px solid var(--line); }
   .note.ok { background:#243a2e; border-color:#3a6b4d; color:#bfe6c8; }
@@ -120,9 +121,9 @@
   <div class="topbar">
     <div class="brand">Poké<span>Opia</span></div>
     <div class="search ac">
-      <input v-model="globalSearch" @input="globalSearchOpen = true" @focus="globalSearchOpen = true" @blur="onGlobalBlur" @keydown.enter="globalSearchHits[0] && pickGlobal(globalSearchHits[0])" placeholder="Search a Pokémon (name or #)">
+      <input v-model="globalSearch" @input="onGlobalInput" @focus="globalSearchOpen = true" @blur="onGlobalBlur" @keydown.down.prevent="moveGlobal(1)" @keydown.up.prevent="moveGlobal(-1)" @keydown.enter.prevent="pickHighlighted" @keydown.esc="globalSearchOpen = false" placeholder="Search a Pokémon (name or #)">
       <div v-if="globalSearchOpen && globalSearchHits.length" class="acbox">
-        <div v-for="p in globalSearchHits" :key="p.slug" @mousedown.prevent="pickGlobal(p)" style="display:flex;align-items:center;gap:8px">
+        <div v-for="(p, i) in globalSearchHits" :key="p.slug" :class="{ sel: i === globalSearchIndex }" @mousemove="globalSearchIndex = i" @mousedown.prevent="pickGlobal(p)" style="display:flex;align-items:center;gap:8px">
           <img :src="p.icon" alt="" loading="lazy" style="width:24px;height:24px;object-fit:contain;flex:none">
           <span class="muted">#{{ pad(p.id) }}</span> {{ p.name }}
         </div>
@@ -144,13 +145,15 @@
             <img :src="currentPokemon.icon" :alt="currentPokemon.name" style="width:84px;height:84px;object-fit:contain;flex:none">
             <div style="flex:1">
               <div class="row" style="gap:10px;align-items:baseline;flex-wrap:wrap">
+                <button class="chip" style="padding:2px 9px" @click="lookupStep(-1)" title="Previous Pokémon">◀</button>
+                <button class="chip" style="padding:2px 9px" @click="lookupStep(1)" title="Next Pokémon">▶</button>
                 <span class="muted">#{{ pad(currentPokemon.id) }}</span>
                 <b style="font-size:20px">{{ currentPokemon.name }}</b>
-                <span class="badge hb" :style="habStyle(currentPokemon.habitat)">{{ currentPokemon.habitat }}</span>
-                <span v-if="currentPokemon.flavor" class="badge">{{ currentPokemon.flavor }} flavors</span>
+                <span class="badge hb" :style="{ ...habStyle(currentPokemon.habitat), cursor: 'pointer' }" title="Find Pokémon in this habitat" @click="filterBy('habitat', currentPokemon.habitat)">{{ currentPokemon.habitat }}</span>
+                <span v-if="currentPokemon.flavor" class="badge" style="cursor:pointer" title="Find Pokémon with this flavor" @click="filterBy('flavor', currentPokemon.flavor)">{{ currentPokemon.flavor }} flavors</span>
               </div>
               <div class="row" style="flex-wrap:wrap;gap:6px;margin-top:10px">
-                <span v-for="cat in currentPokemon.favorites" :key="cat" class="tag">{{ cat }}</span>
+                <span v-for="cat in currentPokemon.favorites" :key="cat" class="tag" style="cursor:pointer" :title="'Find ' + cat + ' Pokémon'" @click="filterBy('favorite', cat)">{{ cat }}</span>
               </div>
               <div v-if="currentPokemon.spawns && currentPokemon.spawns.length" class="row" style="flex-wrap:wrap;gap:6px;margin-top:8px">
                 <span class="muted">Habitats &amp; Locations</span>
@@ -158,19 +161,19 @@
               </div>
               <template v-if="currentPokemon.find">
                 <div class="row" style="flex-wrap:wrap;gap:6px;margin-top:8px">
-                  <span class="muted">Rarity</span><span class="badge">{{ currentPokemon.find.rarity || '—' }}</span>
+                  <span class="muted">Rarity</span><span class="badge" style="cursor:pointer" @click="currentPokemon.find.rarity && filterBy('rarity', currentPokemon.find.rarity)">{{ currentPokemon.find.rarity || '—' }}</span>
                   <template v-if="currentPokemon.find.time && currentPokemon.find.time.length">
                     <span class="muted" style="margin-left:6px">Time</span>
-                    <span v-for="time in currentPokemon.find.time" :key="'time-' + time" class="tag">{{ time }}</span>
+                    <span v-for="time in currentPokemon.find.time" :key="'time-' + time" class="tag" style="cursor:pointer" @click="filterBy('time', time)">{{ time }}</span>
                   </template>
                   <template v-if="currentPokemon.find.weather && currentPokemon.find.weather.length">
                     <span class="muted" style="margin-left:6px">Weather</span>
-                    <span v-for="weather in currentPokemon.find.weather" :key="'weather-' + weather" class="tag">{{ weather }}</span>
+                    <span v-for="weather in currentPokemon.find.weather" :key="'weather-' + weather" class="tag" style="cursor:pointer" @click="filterBy('weather', weather)">{{ weather }}</span>
                   </template>
                 </div>
                 <div v-if="currentPokemon.find.locations && currentPokemon.find.locations.length" class="row" style="flex-wrap:wrap;gap:6px;margin-top:8px">
                   <span class="muted">Location</span>
-                  <span v-for="loc in currentPokemon.find.locations" :key="loc" class="tag">{{ loc }}</span>
+                  <span v-for="loc in currentPokemon.find.locations" :key="loc" class="tag" style="cursor:pointer" @click="filterBy('location', loc)">{{ loc }}</span>
                 </div>
               </template>
             </div>
@@ -202,7 +205,7 @@
               <div class="sec-h"><b>{{ tier.n }}/5 shared favorites{{ tier.n === 5 ? ' — perfect roommate' : '' }}</b>
                 <span class="muted">{{ tier.list.length }} Pokémon</span></div>
               <div class="pgrid">
-                <pokemon-card v-for="mate in tier.list" :key="mate.p.slug" :pokemon="mate.p" :shared="mate.shared" @open="goToLookup(mate.p.slug)"></pokemon-card>
+                <pokemon-card v-for="mate in tier.list" :key="mate.p.slug" :pokemon="mate.p" :shared="mate.shared" :owned="owned.has(mate.p.slug)" @open="goToLookup(mate.p.slug)"></pokemon-card>
               </div>
             </template>
           </template>
@@ -218,7 +221,7 @@
             <div class="row" style="flex-wrap:wrap;gap:6px;margin:8px 0">
               <span v-for="cat in group[0].favorites" :key="cat" class="tag">{{ cat }}</span>
             </div>
-            <div class="pgrid"><pokemon-card v-for="p in group" :key="p.slug" :pokemon="p" @open="goToLookup(p.slug)"></pokemon-card></div>
+            <div class="pgrid"><pokemon-card v-for="p in group" :key="p.slug" :pokemon="p" :owned="owned.has(p.slug)" @open="goToLookup(p.slug)"></pokemon-card></div>
           </div>
           <div v-if="!filteredSharingGroups.length" class="muted">No groups match.</div>
         </template>
@@ -296,7 +299,7 @@
               <div class="row" style="flex-wrap:wrap;gap:6px;margin-top:6px"><span v-for="cat in curItem.categories" :key="cat" class="tag">{{ cat }}</span></div></div>
           </div>
           <div class="muted" style="margin:6px 0">{{ itemMatches.length }} Pokémon like this{{ itemsOwnedOnly ? ' (owned)' : '' }}</div>
-          <div class="pgrid"><pokemon-card v-for="match in itemMatches" :key="match.p.slug" :pokemon="match.p" :shared="match.m" @open="goToLookup(match.p.slug)"></pokemon-card></div>
+          <div class="pgrid"><pokemon-card v-for="match in itemMatches" :key="match.p.slug" :pokemon="match.p" :shared="match.m" :owned="owned.has(match.p.slug)" @open="goToLookup(match.p.slug)"></pokemon-card></div>
         </template>
       </section>
 
@@ -304,6 +307,7 @@
         <div class="panel row" style="gap:10px;flex-wrap:wrap;align-items:center">
           <input v-model="colSearch" class="minput" placeholder="Filter by name..." style="flex:1;min-width:160px">
           <select v-model="colHab" class="minput"><option value="">All habitats</option><option v-for="hab in collectionHabitats" :key="hab" :value="hab">{{ hab }}</option></select>
+          <select v-model="colOwnedFilter" class="minput"><option value="all">All</option><option value="owned">Owned</option><option value="missing">Missing</option></select>
           <span class="muted">{{ owned.size }} owned · {{ filteredCollection.length }} shown · {{ pokemon.length }} total</span>
           <button class="savebtn" @click="markFilteredOwned">Mark filtered owned</button>
           <button class="chip" @click="unmarkFiltered">Unmark filtered</button>
@@ -327,7 +331,7 @@
           <div v-for="room in plannerResult.rooms" :key="room.key" class="panel">
             <div class="row between"><b>{{ room.members.length }} Pokémon</b>
               <span class="badge hb" :style="habStyle(room.hab)">{{ room.hab }}</span></div>
-            <div class="pgrid" style="margin:8px 0"><pokemon-card v-for="p in room.members" :key="p.slug" :pokemon="p" @open="goToLookup(p.slug)"></pokemon-card></div>
+            <div class="pgrid" style="margin:8px 0"><pokemon-card v-for="p in room.members" :key="p.slug" :pokemon="p" :owned="owned.has(p.slug)" @open="goToLookup(p.slug)"></pokemon-card></div>
             <div class="muted">{{ room.cover.pick.length }} items furnish this room{{ room.cover.left.length ? ' — no data for: ' + room.cover.left.join(', ') : '' }}:</div>
             <div class="grid"><item-card v-for="item in room.cover.pick" :key="item.slug" :item="item" @open="goToItem(item)"></item-card></div>
           </div>
@@ -338,19 +342,20 @@
         <div class="panel">
           <div class="row" style="gap:10px;flex-wrap:wrap;margin-bottom:12px">
             <input v-model="finderName" class="minput" placeholder="Name contains..." style="flex:1;min-width:150px">
-            <select v-model="finderFav" class="minput"><option value="">Any favorite</option><option v-for="cat in favoriteCategories" :key="cat" :value="cat">{{ cat }}</option></select>
+            <label class="tickrow muted">Sort <select v-model="finderSort" class="minput"><option value="dex">Dex #</option><option value="name">Name</option><option value="rarity">Rarity</option></select></label>
+            <label class="tickrow muted"><input type="checkbox" v-model="finderFavMatchAll"> Match all favorites</label>
             <label class="tickrow muted"><input type="checkbox" v-model="finderOwned"> Owned only</label>
             <button class="chip" @click="clearFinder">Clear all</button>
           </div>
           <div v-for="facet in finderFacets" :key="facet.key" style="margin-bottom:10px">
             <div class="muted" style="margin-bottom:5px">{{ facet.label }}</div>
             <div class="row" style="flex-wrap:wrap;gap:6px">
-              <span v-for="value in facet.values" :key="facet.key + value" class="chip facet" :class="{ on: finderFacetOn(facet.key, value) }" @click="toggleFinderFacet(facet.key, value)">{{ value }}</span>
+              <span v-for="value in facet.values" :key="facet.key + value" class="chip facet" :class="{ on: finderFacetOn(facet.key, value) }" :style="facetCount(facet.key, value) === 0 ? 'opacity:.4' : ''" @click="toggleFinderFacet(facet.key, value)">{{ value }} <span class="muted">{{ facetCount(facet.key, value) }}</span></span>
             </div>
           </div>
         </div>
         <div class="muted">{{ finderResults.length }} Pokémon match</div>
-        <div v-if="finderResults.length" class="pgrid"><pokemon-card v-for="p in finderResults" :key="p.slug" :pokemon="p" @open="goToLookup(p.slug)"></pokemon-card></div>
+        <div v-if="finderResults.length" class="pgrid"><pokemon-card v-for="p in finderResults" :key="p.slug" :pokemon="p" :owned="owned.has(p.slug)" @open="goToLookup(p.slug)"></pokemon-card></div>
         <div v-else class="muted">No Pokémon match these filters.</div>
       </section>
 

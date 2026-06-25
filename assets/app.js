@@ -91,6 +91,7 @@
         lookupSlug: null,
         globalSearch: '',
         globalSearchOpen: false,
+        globalSearchIndex: 0,
         sharingFilter: '',
         slots: [null, null, null, null, null],
         slotQueries: ['', '', '', '', ''],
@@ -98,6 +99,7 @@
         owned: loadStoredOwned(),
         colSearch: '',
         colHab: '',
+        colOwnedFilter: 'all',
         itemSearch: '',
         itemSuggestionOpen: false,
         curItem: null,
@@ -109,6 +111,7 @@
         },
         plannerResult: null,
         finderSets: {
+          favorite: [],
           habitat: [],
           flavor: [],
           rarity: [],
@@ -117,7 +120,8 @@
           location: []
         },
         finderName: '',
-        finderFav: '',
+        finderSort: 'dex',
+        finderFavMatchAll: false,
         finderOwned: false,
         recipeSearch: '',
         modalHabitatSlug: null,
@@ -228,9 +232,11 @@
       },
       filteredCollection() {
         const q = this.colSearch.toLowerCase().trim();
+        const f = this.colOwnedFilter;
         return this.pokemon.filter(p =>
           (!q || p.name.toLowerCase().includes(q)) &&
-          (!this.colHab || p.habitat === this.colHab)
+          (!this.colHab || p.habitat === this.colHab) &&
+          (f === 'all' || (f === 'owned') === this.owned.has(p.slug))
         );
       },
       itemSuggestions() {
@@ -249,6 +255,7 @@
       },
       finderFacets() {
         return [
+          { key: 'favorite', label: 'Favorites', values: this.favoriteCategories },
           { key: 'habitat', label: 'Ideal habitat', values: this.uniq(p => [p.habitat]) },
           { key: 'rarity', label: 'Rarity', values: ['Common', 'Rare', 'Very Rare'] },
           { key: 'flavor', label: 'Flavor', values: this.uniq(p => [p.flavor]) },
@@ -258,25 +265,13 @@
         ];
       },
       finderResults() {
-        const usesFind = this.finderSets.rarity.length ||
-          this.finderSets.time.length ||
-          this.finderSets.weather.length ||
-          this.finderSets.location.length;
-        const name = this.finderName.toLowerCase();
-        return this.pokemon.filter(p => {
-          if (name && !p.name.toLowerCase().includes(name)) return false;
-          if (this.finderFav && !p.favorites.includes(this.finderFav)) return false;
-          if (this.finderOwned && !this.owned.has(p.slug)) return false;
-          if (this.finderSets.habitat.length && !this.finderSets.habitat.includes(p.habitat)) return false;
-          if (this.finderSets.flavor.length && !this.finderSets.flavor.includes(p.flavor)) return false;
-          const find = p.find;
-          if (usesFind && !find) return false;
-          if (this.finderSets.rarity.length && !(find && this.finderSets.rarity.includes(find.rarity))) return false;
-          if (this.finderSets.time.length && !(find && (find.time || []).some(t => this.finderSets.time.includes(t)))) return false;
-          if (this.finderSets.weather.length && !(find && (find.weather || []).some(w => this.finderSets.weather.includes(w)))) return false;
-          if (this.finderSets.location.length && !(find && (find.locations || []).some(l => this.finderSets.location.includes(l)))) return false;
-          return true;
-        }).sort((a, b) => a.id - b.id);
+        const rank = r => ({ 'Common': 0, 'Rare': 1, 'Very Rare': 2 }[r] ?? 3);
+        const sorters = {
+          dex: (a, b) => a.id - b.id,
+          name: (a, b) => a.name.localeCompare(b.name),
+          rarity: (a, b) => rank(a.find && a.find.rarity) - rank(b.find && b.find.rarity) || a.id - b.id
+        };
+        return this.pokemon.filter(p => this.passesFinder(p, null)).sort(sorters[this.finderSort] || sorters.dex);
       },
       recipes() {
         return this.data.recipes || [];
@@ -381,6 +376,21 @@
         location.hash = `items/${item.slug}`;
         this.scrollToTop();
       },
+      lookupStep(delta) {                                   // page through the dex with prev/next
+        const list = this.pokemon;
+        if (!list.length || !this.currentPokemon) return;
+        const i = list.findIndex(p => p.slug === this.currentPokemon.slug);
+        const next = list[(i + delta + list.length) % list.length];
+        if (next) this.goToLookup(next.slug);
+      },
+      filterBy(facet, value) {                              // click a Lookup tag -> Finder filtered by it
+        if (!value) return;
+        this.clearFinder();
+        if (this.finderSets[facet]) this.finderSets[facet] = [value];
+        this.activeTab = 'finder';
+        location.hash = 'finder';
+        this.scrollToTop();
+      },
       scrollToTop() {
         this.$nextTick(() => window.scrollTo({ top: 0, left: 0, behavior: 'auto' }));
       },
@@ -388,6 +398,20 @@
         this.globalSearch = '';
         this.globalSearchOpen = false;
         this.goToLookup(p.slug);
+      },
+      onGlobalInput() {
+        this.globalSearchOpen = true;
+        this.globalSearchIndex = 0;
+      },
+      moveGlobal(delta) {
+        const n = this.globalSearchHits.length;
+        if (!n) return;
+        this.globalSearchOpen = true;
+        this.globalSearchIndex = (this.globalSearchIndex + delta + n) % n;
+      },
+      pickHighlighted() {
+        const hit = this.globalSearchHits[this.globalSearchIndex] || this.globalSearchHits[0];
+        if (hit) this.pickGlobal(hit);
       },
       onGlobalBlur() {
         setTimeout(() => { this.globalSearchOpen = false; }, 150);
@@ -562,17 +586,42 @@
         if (index >= 0) list.splice(index, 1);
         else list.push(value);
       },
+      passesFinder(p, exceptKey) {                          // all active filters, optionally skipping one facet (for counts)
+        const s = this.finderSets;
+        const name = this.finderName.toLowerCase();
+        if (name && !p.name.toLowerCase().includes(name)) return false;
+        if (this.finderOwned && !this.owned.has(p.slug)) return false;
+        if (exceptKey !== 'favorite' && s.favorite.length) {
+          const ok = this.finderFavMatchAll
+            ? s.favorite.every(c => p.favorites.includes(c))
+            : s.favorite.some(c => p.favorites.includes(c));
+          if (!ok) return false;
+        }
+        if (exceptKey !== 'habitat' && s.habitat.length && !s.habitat.includes(p.habitat)) return false;
+        if (exceptKey !== 'flavor' && s.flavor.length && !s.flavor.includes(p.flavor)) return false;
+        const find = p.find;
+        if (exceptKey !== 'rarity' && s.rarity.length && !(find && s.rarity.includes(find.rarity))) return false;
+        if (exceptKey !== 'time' && s.time.length && !(find && (find.time || []).some(t => s.time.includes(t)))) return false;
+        if (exceptKey !== 'weather' && s.weather.length && !(find && (find.weather || []).some(w => s.weather.includes(w)))) return false;
+        if (exceptKey !== 'location' && s.location.length && !(find && (find.locations || []).some(l => s.location.includes(l)))) return false;
+        return true;
+      },
+      facetCount(key, value) {                              // how many results you'd get if you add this facet value
+        const has = {
+          favorite: p => p.favorites.includes(value),
+          habitat: p => p.habitat === value,
+          flavor: p => p.flavor === value,
+          rarity: p => p.find && p.find.rarity === value,
+          time: p => p.find && (p.find.time || []).includes(value),
+          weather: p => p.find && (p.find.weather || []).includes(value),
+          location: p => p.find && (p.find.locations || []).includes(value)
+        }[key];
+        return this.pokemon.filter(p => this.passesFinder(p, key) && has(p)).length;
+      },
       clearFinder() {
-        this.finderSets = {
-          habitat: [],
-          flavor: [],
-          rarity: [],
-          time: [],
-          weather: [],
-          location: []
-        };
+        this.finderSets = { favorite: [], habitat: [], flavor: [], rarity: [], time: [], weather: [], location: [] };
         this.finderName = '';
-        this.finderFav = '';
+        this.finderFavMatchAll = false;
         this.finderOwned = false;
       },
       openHabitat(slug) {
