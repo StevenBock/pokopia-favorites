@@ -189,7 +189,7 @@ function renderLookup(p) {
           ${p.favorites.map(c => `<span class="tag">${esc(c)}</span>`).join('')}
         </div>
         ${p.spawns && p.spawns.length ? `<div class="row" style="flex-wrap:wrap;gap:6px;margin-top:8px">
-          <span class="muted">📍 Spawns at</span>${p.spawns.map(s => `<span class="tag spawn">${esc(s)}</span>`).join('')}</div>` : ''}
+          <span class="muted">📍 Habitats &amp; Locations</span>${p.spawns.map(s => `<span class="tag spawn">${esc(s)}</span>`).join('')}</div>` : ''}
       </div>
     </div>
     <div class="row between"><span class="muted">MATCHING ITEMS</span>
