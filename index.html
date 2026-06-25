@@ -138,10 +138,19 @@ function renderLookup(p) {
       <div class="grid">${its.map(itemCard).join('')}</div>`;
   }).join('');
   $('#lookup').innerHTML = `
-    <div class="panel row between">
-      <div class="row"><span class="muted">#${String(p.id).padStart(3,'0')}</span>
-        <b style="font-size:18px">${esc(p.name)}</b></div>
-      <span class="badge hb" style="${habStyle(p.habitat)}">${esc(p.habitat)}</span>
+    <div class="panel" style="display:flex;gap:16px;align-items:center">
+      <img src="${p.icon}" alt="${esc(p.name)}" style="width:84px;height:84px;object-fit:contain;flex:none">
+      <div style="flex:1">
+        <div class="row" style="gap:10px;align-items:baseline;flex-wrap:wrap">
+          <span class="muted">#${String(p.id).padStart(3,'0')}</span>
+          <b style="font-size:20px">${esc(p.name)}</b>
+          <span class="badge hb" style="${habStyle(p.habitat)}">${esc(p.habitat)}</span>
+          ${p.flavor ? `<span class="badge">${esc(p.flavor)} flavors</span>` : ''}
+        </div>
+        <div class="row" style="flex-wrap:wrap;gap:6px;margin-top:10px">
+          ${p.favorites.map(c => `<span class="tag">${esc(c)}</span>`).join('')}
+        </div>
+      </div>
     </div>
     <div class="row between"><span class="muted">MATCHING ITEMS</span>
       <span class="muted">${total} items across ${p.favorites.length} categories</span></div>
