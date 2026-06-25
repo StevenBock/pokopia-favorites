@@ -102,6 +102,14 @@
   .minput { background:var(--input); border:2px solid var(--line); color:var(--ink);
     font:inherit; padding:7px 10px; border-radius:8px; font-size:13px; }
   .tickrow { display:inline-flex; align-items:center; gap:6px; }
+  #modal { position:fixed; inset:0; background:rgba(0,0,0,.6); display:flex;
+    align-items:center; justify-content:center; z-index:50; padding:20px; }
+  #modal[hidden] { display:none; }
+  .modal-card { background:var(--panel); border:2px solid var(--line); border-radius:14px;
+    box-shadow:0 12px 32px rgba(0,0,0,.5); padding:18px 20px; max-width:520px; width:100%; max-height:82vh; overflow:auto; }
+  .modal-x { cursor:pointer; color:var(--dim); font-weight:800; font-size:18px; }
+  .modal-x:hover { color:var(--ink); }
+  .tag.spawn:hover { border-color:var(--accent); filter:brightness(1.08); }
 </style>
 </head>
 <body>
@@ -126,6 +134,7 @@
   <div id="collection" hidden></div>
   <div id="planner" hidden></div>
 </div>
+<div id="modal" hidden><div class="modal-card" id="modalBody"></div></div>
 
 <script>
 const HAB_COLOR = { Bright:'#caa53d', Warm:'#c0673a', Cool:'#3a78c0', Dark:'#5b5170',
@@ -147,6 +156,9 @@ fetch('./data.json').then(r => r.json()).then(d => {
   renderCollection();
   renderPlanner();
   ['#sharing','#items','#planner'].forEach(s => $(s).addEventListener('click', gotoHandler));
+  $('#lookup').addEventListener('click', e => { const el = e.target.closest('[data-hab]'); if (el) openHabitat(el.dataset.hab); });
+  $('#modal').addEventListener('click', e => { if (e.target.id === 'modal' || e.target.id === 'modalClose') $('#modal').hidden = true; });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') $('#modal').hidden = true; });
 }).catch(() => { $('#lookup').innerHTML = '<div class="note bad">Could not load data.json — serve this folder over http (e.g. <code>python3 -m http.server</code>) and run the scraper first.</div>'; });
 
 // --- tabs ---
@@ -189,7 +201,7 @@ function renderLookup(p) {
           ${p.favorites.map(c => `<span class="tag">${esc(c)}</span>`).join('')}
         </div>
         ${p.spawns && p.spawns.length ? `<div class="row" style="flex-wrap:wrap;gap:6px;margin-top:8px">
-          <span class="muted">📍 Habitats &amp; Locations</span>${p.spawns.map(s => `<span class="tag spawn">${esc(s)}</span>`).join('')}</div>` : ''}
+          <span class="muted">📍 Habitats &amp; Locations</span>${p.spawns.map(s => `<span class="tag spawn" data-hab="${esc(s.slug)}" style="cursor:pointer" title="How to make ${esc(s.name)}">${esc(s.name)}</span>`).join('')}</div>` : ''}
       </div>
     </div>
     <div class="row between"><span class="muted">MATCHING ITEMS</span>
@@ -408,6 +420,22 @@ const saveOwned = () => { try { localStorage.setItem(OWN_KEY, JSON.stringify([..
 const toggleOwned = id => { owned.has(id) ? owned.delete(id) : owned.add(id); saveOwned(); };
 function goToLookup(id) { const p = DATA.pokemon.find(x => x.id === id); if (p) { renderLookup(p); document.querySelector('.tabs button[data-tab="lookup"]').click(); } }
 const gotoHandler = e => { const el = e.target.closest('.pmon[data-goto]'); if (el) goToLookup(+el.dataset.goto); };
+// "how to make" popup for a habitat/location (from the Lookup spawn tags)
+function openHabitat(slug) {
+  const h = DATA.habitats && DATA.habitats[slug];
+  if (!h) return;
+  $('#modalBody').innerHTML = `
+    <div class="row between"><b style="font-size:18px">🏕️ ${esc(h.name)}</b><span class="modal-x" id="modalClose">✕</span></div>
+    ${h.flavor ? `<div class="muted" style="margin:6px 0 14px">${esc(h.flavor)}</div>` : '<div style="height:8px"></div>'}
+    <div class="sec-h"><b>How to make it</b></div>
+    ${h.reqs && h.reqs.length
+      ? `<div class="grid">${h.reqs.map(r => `<div class="card">
+          ${r.icon ? `<img src="${r.icon}" alt="">` : ''}<span class="nm">${esc(r.name)}</span>
+          ${r.qty ? `<span class="badge" style="margin-left:auto">×${r.qty}</span>` : ''}</div>`).join('')}</div>`
+      : '<div class="muted">No requirement data on Serebii yet.</div>'}
+    <div class="muted" style="margin-top:12px"><a href="https://www.serebii.net/pokemonpokopia/habitatdex/${esc(slug)}.shtml" target="_blank" rel="noopener">View full details on Serebii ↗</a></div>`;
+  $('#modal').hidden = false;
+}
 
 const colCard = p => `<div class="pmon ${owned.has(p.id) ? 'own' : ''}" data-own="${p.id}" style="cursor:pointer" title="Toggle owned">
   <img src="${p.icon}" alt="" loading="lazy"><span class="nm">${esc(p.name)}</span>

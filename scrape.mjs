@@ -88,7 +88,7 @@ await pool(list, 6, async (p) => {
     const hseg = html.slice(end, hEnd > end ? hEnd : end + 4000)
     const sp = new Map()
     for (const m of hseg.matchAll(/\/habitatdex\/([\w-]+)\.shtml">([^<]+)<\/a>/g)) if (!sp.has(m[1])) sp.set(m[1], ent(m[2]))
-    p.spawns = [...sp.values()]
+    p.spawns = [...sp.entries()].map(([slug, name]) => ({ slug, name }))
   } else p.spawns = []
 })
 
@@ -98,6 +98,33 @@ const outPokemon = list.filter(p => !p.skip && p.habitat)
 const outItems = [...items.values()].sort((a, b) => a.name.localeCompare(b.name))
   .map(({ name, slug, icon, categories }) => ({ name, slug, icon, categories: [...categories].sort() }))
 
+// "how to make" requirements for every habitat that appears as a spawn spot
+const habNames = new Map()
+for (const p of outPokemon) for (const s of p.spawns) if (!habNames.has(s.slug)) habNames.set(s.slug, s.name)
+const habitats = {}
+await pool([...habNames.keys()], 6, async (slug) => {
+  const html = await get(`${BASE}/habitatdex/${slug}.shtml`)
+  if (!html) return
+  const reqs = []
+  const ri = html.indexOf('>Requirements<')
+  if (ri >= 0) {
+    const rseg = html.slice(ri, html.indexOf('</table>', ri))
+    for (const row of rseg.split('<tr>').slice(2)) {           // skip header + table open
+      const alt = row.match(/alt="([^"]+)"/); if (!alt) continue
+      const ic = row.match(/items\/([\w-]+)\.png/)
+      const qty = row.match(/class="fooinfo">\s*(\d+)\s*</)
+      reqs.push({ name: ent(alt[1]), icon: ic ? `${BASE}/items/${ic[1]}.png` : null, qty: qty ? +qty[1] : null })
+    }
+  }
+  let flavor = ''
+  const fi = html.indexOf('>Flavor Text<')
+  if (fi >= 0) {
+    const fm = html.slice(fi, html.indexOf('</table>', fi)).match(/class="fooinfo"[^>]*>([\s\S]*?)<\/td>/)
+    if (fm) flavor = ent(fm[1].replace(/<[^>]+>/g, ' '))
+  }
+  habitats[slug] = { name: habNames.get(slug), flavor, reqs }
+})
+
 await writeFile(new URL('./data.json', import.meta.url),
-  JSON.stringify({ scrapedAt: new Date().toISOString(), source: 'serebii.net', pokemon: outPokemon, items: outItems }, null, 2))
-console.log(`wrote data.json: ${outPokemon.length} pokemon, ${outItems.length} items`)
+  JSON.stringify({ scrapedAt: new Date().toISOString(), source: 'serebii.net', pokemon: outPokemon, items: outItems, habitats }, null, 2))
+console.log(`wrote data.json: ${outPokemon.length} pokemon, ${outItems.length} items, ${Object.keys(habitats).length} habitats`)
