@@ -67,6 +67,13 @@
   .coverbadge { background:var(--accent); color:#fff; font-size:10px; padding:2px 7px; border-radius:6px; }
   .covnames { font-size:10px; color:var(--dim); margin-top:3px; }
   .covcard { flex-direction:column; align-items:flex-start; }
+  .savebtn { background:var(--accent); color:#fff; border:0; padding:7px 12px; border-radius:8px; cursor:pointer; font-size:13px; }
+  .savedbar { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px; }
+  .chip { background:var(--tag); border:1px solid var(--line); border-radius:999px; padding:5px 10px;
+    font-size:12px; cursor:pointer; display:inline-flex; align-items:center; gap:6px; }
+  .chip:hover { border-color:var(--accent); }
+  .chipx { color:var(--dim); }
+  .chipx:hover { color:#ff9a9a; }
 </style>
 </head>
 <body>
@@ -220,10 +227,45 @@ const pmonCard = (p, shared) => `<div class="pmon"><img src="${p.icon}" alt="" l
 let slots = [null, null, null, null, null];
 function renderCustom() {
   $('#custom').innerHTML = `
-    <div class="muted">Select up to 5 Pokémon to see which items they share and which items span multiple favorites.</div>
+    <div class="row between" style="margin-bottom:8px">
+      <span class="muted">Select up to 5 Pokémon to see which items they share and which items span multiple favorites.</span>
+      <button id="cgSave" class="savebtn">＋ Save group</button>
+    </div>
+    <div id="cgSaved" class="savedbar"></div>
     <div class="slots" id="slots"></div>
     <div id="cgResult"></div>`;
+  $('#cgSave').onclick = saveCurrentGroup;
+  paintSaved(); paintSlots(); paintCustom();
+}
+// saved custom groups -> localStorage as {name, ids:[...]}; browser-local only, no sync.
+const LS_KEY = 'pokopia.customGroups';
+const loadGroups = () => { try { return JSON.parse(localStorage.getItem(LS_KEY)) || []; } catch { return []; } };
+const saveGroups = g => { try { localStorage.setItem(LS_KEY, JSON.stringify(g)); } catch { alert('Could not save (storage blocked).'); } };
+function saveCurrentGroup() {
+  const sel = slots.filter(Boolean);
+  if (!sel.length) return alert('Pick at least one Pokémon first.');
+  const name = (prompt('Name this group:', sel.map(p => p.name).join(', ').slice(0, 40)) || '').trim();
+  if (!name) return;
+  const groups = loadGroups().filter(g => g.name !== name);   // same name overwrites
+  groups.push({ name, ids: sel.map(p => p.id) });
+  saveGroups(groups); paintSaved();
+}
+function applyGroup(g) {
+  slots = [null, null, null, null, null];
+  g.ids.slice(0, 5).forEach((id, i) => slots[i] = DATA.pokemon.find(p => p.id === id) || null);
   paintSlots(); paintCustom();
+}
+function paintSaved() {
+  const groups = loadGroups();
+  const bar = $('#cgSaved');
+  if (!groups.length) { bar.innerHTML = '<span class="muted">No saved groups yet — pick Pokémon, then “Save group”.</span>'; return; }
+  bar.innerHTML = groups.map((g, i) =>
+    `<span class="chip" data-load="${i}">${esc(g.name)} <span class="muted">(${g.ids.length})</span><span class="chipx" data-del="${i}">✕</span></span>`).join('');
+  bar.querySelectorAll('[data-load]').forEach(el => el.onclick = () => applyGroup(groups[+el.dataset.load]));
+  bar.querySelectorAll('[data-del]').forEach(el => el.onclick = e => {
+    e.stopPropagation();
+    const gs = loadGroups(); gs.splice(+el.dataset.del, 1); saveGroups(gs); paintSaved();
+  });
 }
 function paintSlots() {
   $('#slots').innerHTML = slots.map((p, i) => {
