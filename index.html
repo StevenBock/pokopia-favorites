@@ -8,10 +8,10 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
-  :root {
-    --bg:#201b15; --panel:#2c251d; --panel2:#352d23; --line:#574a39;
-    --ink:#ece2d2; --dim:#a2937c; --accent:#c4703d; --accent2:#8c9a5b;
-    --tag:#3b3228; --ok:#7aa15a; --input:#1b1711; --shadow:rgba(0,0,0,.4);
+  :root { /* Ditto purple */
+    --bg:#1b1230; --panel:#291d44; --panel2:#33274f; --line:#4f3e7a;
+    --ink:#eee5fb; --dim:#a594c6; --accent:#d45bac; --accent2:#9a78d6;
+    --tag:#352a55; --ok:#6cc38a; --input:#150d27; --shadow:rgba(0,0,0,.45);
   }
   * { box-sizing:border-box; }
   body { margin:0; background:var(--bg);
@@ -44,7 +44,7 @@
   .hb { font-weight:700; }
   .tag { font-size:11px; font-weight:600; padding:3px 10px; border-radius:6px;
     background:var(--tag); color:var(--ink); border:1.5px solid var(--line); }
-  .tag.spawn { background:var(--accent2); color:#1c1812; border-color:#3f4628; }
+  .tag.spawn { background:var(--accent2); color:#1a1030; border-color:#5a4a86; }
   .panel { background:var(--panel); border:2px solid var(--line); border-radius:14px;
     padding:16px 18px; margin-bottom:16px; box-shadow:0 3px 12px var(--shadow); }
   .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; }
@@ -80,8 +80,8 @@
   .acbox div:hover { background:var(--panel2); }
   .note { padding:11px 14px; border-radius:12px; margin-bottom:16px; font-weight:700;
     border:2px solid var(--line); }
-  .note.ok { background:#2e3a22; border-color:#46562f; color:#c2d79a; }
-  .note.bad { background:#3a2620; border-color:#5a392f; color:#e0a896; }
+  .note.ok { background:#243a2e; border-color:#3a6b4d; color:#bfe6c8; }
+  .note.bad { background:#3a1f30; border-color:#6a3558; color:#f0a8cc; }
   .coverbadge { background:var(--accent); color:#fff; font-size:10px; font-weight:700;
     padding:2px 8px; border-radius:999px; }
   .covnames { font-size:10px; color:var(--dim); margin-top:3px; }
@@ -97,8 +97,8 @@
     align-items:center; gap:6px; transition:border-color .12s; }
   .chip:hover { border-color:var(--accent); }
   .chipx { color:var(--dim); font-weight:700; }
-  .chipx:hover { color:#e0a896; }
-  .pmon.own { border-color:var(--accent); background:#3a2a1e; }
+  .chipx:hover { color:#f0a8cc; }
+  .pmon.own { border-color:var(--accent); background:#3a2456; }
   .minput { background:var(--input); border:2px solid var(--line); color:var(--ink);
     font:inherit; padding:7px 10px; border-radius:8px; font-size:13px; }
   .tickrow { display:inline-flex; align-items:center; gap:6px; }
