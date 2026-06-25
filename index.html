@@ -152,7 +152,6 @@ const esc = s => (s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&
 fetch('./data.json', { cache: 'no-cache' }).then(r => r.json()).then(d => {
   DATA = d;
   for (const it of d.items) for (const c of it.categories) (byCat[c] ||= []).push(it);
-  renderLookup(d.pokemon[0]);
   renderSharing();
   renderCustom();
   renderItems();
@@ -163,12 +162,28 @@ fetch('./data.json', { cache: 'no-cache' }).then(r => r.json()).then(d => {
   $('#lookup').addEventListener('click', e => { const el = e.target.closest('[data-hab]'); if (el) openHabitat(el.dataset.hab); });
   $('#modal').addEventListener('click', e => { if (e.target.id === 'modal' || e.target.id === 'modalClose') $('#modal').hidden = true; });
   document.addEventListener('keydown', e => { if (e.key === 'Escape') $('#modal').hidden = true; });
+  applyHash();                                          // render the initial view from the URL hash
 }).catch(() => { $('#lookup').innerHTML = '<div class="note bad">Could not load data.json — serve this folder over http (e.g. <code>python3 -m http.server</code>) and run the scraper first.</div>'; });
 
-// --- tabs ---
+// --- tabs + history routing via the URL hash (e.g. #lookup/25, #finder) ---
+const TABS = ['lookup','sharing','custom','items','collection','planner','finder'];
+let lookupSlug = null;
+function showTab(tab) {
+  document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('active', x.dataset.tab === tab));
+  TABS.forEach(t => $('#'+t).hidden = t !== tab);
+}
+function applyHash() {                                  // single source of truth: render whatever the hash says
+  const [tab, slug] = (location.hash || '#lookup').slice(1).split('/');
+  const t = TABS.includes(tab) ? tab : 'lookup';
+  showTab(t);
+  if (t === 'lookup') {
+    const p = (slug && DATA.pokemon.find(x => x.slug === slug)) || DATA.pokemon.find(x => x.slug === lookupSlug) || DATA.pokemon[0];
+    if (p) renderLookup(p);
+  }
+}
+window.addEventListener('hashchange', applyHash);
 document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
-  document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('active', x === b));
-  ['lookup','sharing','custom','items','collection','planner','finder'].forEach(t => $('#'+t).hidden = t !== b.dataset.tab);
+  location.hash = b.dataset.tab === 'lookup' ? 'lookup/' + (lookupSlug || (DATA.pokemon[0] || {}).slug) : b.dataset.tab;
 });
 
 // --- global search drives Lookup ---
@@ -176,7 +191,7 @@ $('#globalSearch').addEventListener('input', e => {
   const q = e.target.value.toLowerCase().replace('#','').trim();
   if (!q) return;
   const p = DATA.pokemon.find(p => p.name.toLowerCase().includes(q) || String(p.id).padStart(3,'0') === q.padStart(3,'0'));
-  if (p) { renderLookup(p); document.querySelector('.tabs button').click(); }
+  if (p) location.hash = 'lookup/' + p.slug;
 });
 
 const itemCard = it => `<div class="card"><img src="${it.icon}" alt="" loading="lazy"><span class="nm">${esc(it.name)}</span></div>`;
@@ -184,6 +199,7 @@ const itemCard = it => `<div class="card"><img src="${it.icon}" alt="" loading="
 // ---------- TAB 1: LOOKUP ----------
 function renderLookup(p) {
   if (!p) return;
+  lookupSlug = p.slug;
   let total = 0;
   const secs = p.favorites.map(cat => {
     const its = byCat[cat] || [];
@@ -290,7 +306,7 @@ function renderCompat(t) {
       <div class="pgrid">${tier.list.map(m => pmonCard(m.p, m.shared)).join('')}</div>`).join('')
       : `<div class="muted">No same-habitat Pokémon share any favorites with ${esc(t.name)}.</div>`);
 }
-const pmonCard = (p, shared) => `<div class="pmon" data-goto="${p.id}" title="Open ${esc(p.name)} in Lookup" style="cursor:pointer"><img src="${p.icon}" alt="" loading="lazy">
+const pmonCard = (p, shared) => `<div class="pmon" data-goto="${esc(p.slug)}" title="Open ${esc(p.name)} in Lookup" style="cursor:pointer"><img src="${p.icon}" alt="" loading="lazy">
   <span class="nm">${esc(p.name)}</span><span class="muted">#${String(p.id).padStart(3,'0')}</span>
   ${p.flavor ? `<span class="muted">${esc(p.flavor)} flavors</span>` : ''}
   ${shared && shared.length ? `<span class="covnames" style="text-align:center">${shared.map(esc).join(', ')}</span>` : ''}</div>`;
@@ -319,12 +335,12 @@ function saveCurrentGroup() {
   const name = (prompt('Name this group:', sel.map(p => p.name).join(', ').slice(0, 40)) || '').trim();
   if (!name) return;
   const groups = loadGroups().filter(g => g.name !== name);   // same name overwrites
-  groups.push({ name, ids: sel.map(p => p.id) });
+  groups.push({ name, ids: sel.map(p => p.slug) });
   saveGroups(groups); paintSaved();
 }
 function applyGroup(g) {
   slots = [null, null, null, null, null];
-  g.ids.slice(0, 5).forEach((id, i) => slots[i] = DATA.pokemon.find(p => p.id === id) || null);
+  g.ids.slice(0, 5).forEach((sl, i) => slots[i] = DATA.pokemon.find(p => p.slug === sl) || null);
   paintSlots(); paintCustom();
 }
 function paintSaved() {
@@ -356,9 +372,9 @@ function paintSlots() {
       const q = inp.value.toLowerCase().trim();
       const hits = q ? DATA.pokemon.filter(p => p.name.toLowerCase().includes(q)).slice(0, 8) : [];
       box.hidden = !hits.length;
-      box.innerHTML = hits.map(p => `<div data-id="${p.id}">#${String(p.id).padStart(3,'0')} ${esc(p.name)}</div>`).join('');
+      box.innerHTML = hits.map(p => `<div data-id="${esc(p.slug)}">#${String(p.id).padStart(3,'0')} ${esc(p.name)}</div>`).join('');
       box.querySelectorAll('[data-id]').forEach(d => d.onclick = () => {
-        slots[+inp.dataset.slot] = DATA.pokemon.find(p => p.id === +d.dataset.id);
+        slots[+inp.dataset.slot] = DATA.pokemon.find(p => p.slug === d.dataset.id);
         paintSlots(); paintCustom();
       });
     });
@@ -425,12 +441,12 @@ function greedyCover(sel) {
 }
 
 // ===================== COLLECTION (owned set) =====================
-const OWN_KEY = 'pokopia.owned';
+const OWN_KEY = 'pokopia.owned.v2';   // v2: keyed by slug (v1 used non-unique ids)
 let owned = (() => { try { return new Set(JSON.parse(localStorage.getItem(OWN_KEY)) || []); } catch { return new Set(); } })();
 const saveOwned = () => { try { localStorage.setItem(OWN_KEY, JSON.stringify([...owned])); } catch {} };
 const toggleOwned = id => { owned.has(id) ? owned.delete(id) : owned.add(id); saveOwned(); };
-function goToLookup(id) { const p = DATA.pokemon.find(x => x.id === id); if (p) { renderLookup(p); document.querySelector('.tabs button[data-tab="lookup"]').click(); } }
-const gotoHandler = e => { const el = e.target.closest('.pmon[data-goto]'); if (el) goToLookup(+el.dataset.goto); };
+function goToLookup(id) { location.hash = 'lookup/' + id; }
+const gotoHandler = e => { const el = e.target.closest('.pmon[data-goto]'); if (el) goToLookup(el.dataset.goto); };
 // "how to make" popup for a habitat/location (from the Lookup spawn tags)
 function openHabitat(slug) {
   const h = DATA.habitats && DATA.habitats[slug];
@@ -448,7 +464,7 @@ function openHabitat(slug) {
   $('#modal').hidden = false;
 }
 
-const colCard = p => `<div class="pmon ${owned.has(p.id) ? 'own' : ''}" data-own="${p.id}" style="cursor:pointer" title="Toggle owned">
+const colCard = p => `<div class="pmon ${owned.has(p.slug) ? 'own' : ''}" data-own="${esc(p.slug)}" style="cursor:pointer" title="Toggle owned">
   <img src="${p.icon}" alt="" loading="lazy"><span class="nm">${esc(p.name)}</span>
   <span class="muted">#${String(p.id).padStart(3, '0')}</span></div>`;
 function filteredCollection() {
@@ -473,9 +489,9 @@ function renderCollection() {
     <div id="colGrid" class="pgrid"></div>`;
   $('#colSearch').addEventListener('input', paintCollection);
   $('#colHab').addEventListener('change', paintCollection);
-  $('#colGrid').onclick = e => { const el = e.target.closest('[data-own]'); if (!el) return; const id = +el.dataset.own; toggleOwned(id); el.classList.toggle('own', owned.has(id)); updateColCount(); };
-  $('#colMark').onclick = () => { filteredCollection().forEach(p => owned.add(p.id)); saveOwned(); paintCollection(); };
-  $('#colUnmark').onclick = () => { filteredCollection().forEach(p => owned.delete(p.id)); saveOwned(); paintCollection(); };
+  $('#colGrid').onclick = e => { const el = e.target.closest('[data-own]'); if (!el) return; const slug = el.dataset.own; toggleOwned(slug); el.classList.toggle('own', owned.has(slug)); updateColCount(); };
+  $('#colMark').onclick = () => { filteredCollection().forEach(p => owned.add(p.slug)); saveOwned(); paintCollection(); };
+  $('#colUnmark').onclick = () => { filteredCollection().forEach(p => owned.delete(p.slug)); saveOwned(); paintCollection(); };
   $('#colClear').onclick = () => { if (confirm('Clear your whole collection?')) { owned.clear(); saveOwned(); paintCollection(); } };
   paintCollection();
 }
@@ -503,7 +519,7 @@ function showItem() {
   if (!curItem) return;
   const ownedOnly = $('#itOwned').checked;
   const mons = DATA.pokemon.map(p => ({ p, m: p.favorites.filter(c => curItem.categories.includes(c)) }))
-    .filter(x => x.m.length && (!ownedOnly || owned.has(x.p.id)))
+    .filter(x => x.m.length && (!ownedOnly || owned.has(x.p.slug)))
     .sort((a, b) => b.m.length - a.m.length || a.p.id - b.p.id);
   $('#itResult').innerHTML = `
     <div class="panel row" style="gap:14px;align-items:center">
@@ -533,7 +549,7 @@ function runPlanner() {
   const maxSize = Math.max(2, +$('#plSize').value || 6);
   const minShared = Math.max(0, +$('#plMin').value || 0);
   const ownedOnly = $('#plOwned').checked;
-  const pool = DATA.pokemon.filter(p => !ownedOnly || owned.has(p.id));
+  const pool = DATA.pokemon.filter(p => !ownedOnly || owned.has(p.slug));
   if (!pool.length) {
     $('#plResult').innerHTML = `<div class="note bad">No ${ownedOnly ? 'owned ' : ''}Pokémon to plan. Mark some in the Collection tab${ownedOnly ? ', or uncheck “Owned only”' : ''}.</div>`;
     return;
@@ -620,7 +636,7 @@ function paintFinder() {
   const res = DATA.pokemon.filter(p => {
     if (finderName && !p.name.toLowerCase().includes(finderName.toLowerCase())) return false;
     if (finderFav && !p.favorites.includes(finderFav)) return false;
-    if (finderOwned && !owned.has(p.id)) return false;
+    if (finderOwned && !owned.has(p.slug)) return false;
     if (S.habitat.size && !S.habitat.has(p.habitat)) return false;
     if (S.flavor.size && !S.flavor.has(p.flavor)) return false;
     const f = p.find;

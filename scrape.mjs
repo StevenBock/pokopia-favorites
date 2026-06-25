@@ -70,7 +70,8 @@ for (const cat of cats) {
   // pokemon table rows: #001 ... <a href="/pokemonpokopia/pokedex/SLUG.shtml"><img src=".../small/001.png" alt="NAME Image"
   for (const m of html.matchAll(/#(\d+)<\/td>\s*<td[^>]*><a href="\/pokemonpokopia\/pokedex\/([\w-]+)\.shtml"><img src="([^"]+)"\s+alt="([^"]+?)(?: Image)?"/g)) {
     const slug = m[2]
-    if (!pokemon.has(slug)) pokemon.set(slug, { id: +m[1], name: ent(m[4]), slug, icon: BASE.replace('/pokemonpokopia','') + m[3] })
+    // id = sprite/national-dex number from the image filename; the "#NNN" column is just a per-page row counter
+    if (!pokemon.has(slug)) pokemon.set(slug, { id: +((m[3].match(/(\d+)\.png/) || [])[1] || m[1]), name: ent(m[4]), slug, icon: BASE.replace('/pokemonpokopia','') + m[3] })
   }
   await sleep(120)
 }
