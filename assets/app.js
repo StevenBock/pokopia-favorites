@@ -45,8 +45,9 @@
     props: {
       item: { type: Object, required: true }
     },
+    emits: ['open'],
     template: `
-      <div class="card">
+      <div class="card" style="cursor:pointer" :title="'View ' + item.name" @click="$emit('open', item)">
         <img :src="item.icon" alt="" loading="lazy">
         <span class="nm">{{ item.name }}</span>
       </div>
@@ -89,6 +90,7 @@
         dataError: false,
         lookupSlug: null,
         globalSearch: '',
+        globalSearchOpen: false,
         sharingFilter: '',
         slots: [null, null, null, null, null],
         slotQueries: ['', '', '', '', ''],
@@ -138,6 +140,15 @@
       lookupTotal() {
         if (!this.currentPokemon) return 0;
         return this.currentPokemon.favorites.reduce((n, cat) => n + this.itemsForCategory(cat).length, 0);
+      },
+      globalSearchHits() {
+        const q = this.globalSearch.toLowerCase().replace('#', '').trim();
+        if (!q) return [];
+        const isNum = /^\d+$/.test(q);
+        return this.pokemon.filter(p =>
+          p.name.toLowerCase().includes(q) ||
+          (isNum && String(p.id).padStart(3, '0').includes(q))
+        ).slice(0, 10);
       },
       sharingGroups() {
         const map = new Map();
@@ -351,6 +362,9 @@
           const current = this.lookupSlug && this.pokemon.find(p => p.slug === this.lookupSlug);
           const fallback = this.pokemon[0] || null;
           this.lookupSlug = (requested || current || fallback || {}).slug || null;
+        } else if (nextTab === 'items' && slug) {
+          const item = this.items.find(i => i.slug === slug);
+          if (item) { this.curItem = item; this.itemSearch = item.name; }
         }
       },
       goToLookup(slug) {
@@ -359,17 +373,24 @@
         location.hash = `lookup/${slug}`;
         this.scrollToTop();
       },
+      goToItem(item) {
+        this.curItem = item;
+        this.itemSearch = item.name;
+        this.itemSuggestionOpen = false;
+        this.activeTab = 'items';
+        location.hash = `items/${item.slug}`;
+        this.scrollToTop();
+      },
       scrollToTop() {
         this.$nextTick(() => window.scrollTo({ top: 0, left: 0, behavior: 'auto' }));
       },
-      handleGlobalSearch() {
-        const q = this.globalSearch.toLowerCase().replace('#', '').trim();
-        if (!q) return;
-        const match = this.pokemon.find(p =>
-          p.name.toLowerCase().includes(q) ||
-          String(p.id).padStart(3, '0') === q.padStart(3, '0')
-        );
-        if (match) this.goToLookup(match.slug);
+      pickGlobal(p) {
+        this.globalSearch = '';
+        this.globalSearchOpen = false;
+        this.goToLookup(p.slug);
+      },
+      onGlobalBlur() {
+        setTimeout(() => { this.globalSearchOpen = false; }, 150);
       },
       resolveMon(q) {
         if (!q) return null;

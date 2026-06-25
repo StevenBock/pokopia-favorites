@@ -119,7 +119,15 @@
   <h1>Pokémon Pokopia favorites lookup</h1>
   <div class="topbar">
     <div class="brand">Poké<span>Opia</span></div>
-    <div class="search"><input v-model="globalSearch" @input="handleGlobalSearch" placeholder="#001 Bulbasaur"></div>
+    <div class="search ac">
+      <input v-model="globalSearch" @input="globalSearchOpen = true" @focus="globalSearchOpen = true" @blur="onGlobalBlur" @keydown.enter="globalSearchHits[0] && pickGlobal(globalSearchHits[0])" placeholder="Search a Pokémon (name or #)">
+      <div v-if="globalSearchOpen && globalSearchHits.length" class="acbox">
+        <div v-for="p in globalSearchHits" :key="p.slug" @mousedown.prevent="pickGlobal(p)" style="display:flex;align-items:center;gap:8px">
+          <img :src="p.icon" alt="" loading="lazy" style="width:24px;height:24px;object-fit:contain;flex:none">
+          <span class="muted">#{{ pad(p.id) }}</span> {{ p.name }}
+        </div>
+      </div>
+    </div>
   </div>
   <div class="tabs">
     <button v-for="tab in tabs" :key="tab.id" :data-tab="tab.id" :class="{ active: activeTab === tab.id }" @click="selectTab(tab.id)">
@@ -173,7 +181,7 @@
           </div>
           <template v-for="cat in currentPokemon.favorites" :key="cat">
             <div class="sec-h"><b>{{ cat }}</b><span class="muted">{{ itemsForCategory(cat).length }} items</span></div>
-            <div class="grid"><item-card v-for="item in itemsForCategory(cat)" :key="item.slug" :item="item"></item-card></div>
+            <div class="grid"><item-card v-for="item in itemsForCategory(cat)" :key="item.slug" :item="item" @open="goToItem(item)"></item-card></div>
           </template>
         </template>
       </section>
@@ -252,7 +260,7 @@
           </div>
           <div class="panel">
             <b>Suggested minimal item set</b> <span class="muted">— {{ customCover.pick.length }} items cover every favorite of all {{ selectedCustom.length }} Pokémon</span>
-            <div class="grid" style="margin-top:8px"><item-card v-for="item in customCover.pick" :key="item.slug" :item="item"></item-card></div>
+            <div class="grid" style="margin-top:8px"><item-card v-for="item in customCover.pick" :key="item.slug" :item="item" @open="goToItem(item)"></item-card></div>
             <div v-if="customCover.left.length" class="muted" style="margin-top:6px">No item data yet for: {{ customCover.left.join(', ') }}</div>
           </div>
           <div class="row between" style="margin-top:6px"><b>ITEMS COVERING MULTIPLE POKÉMON ({{ customCoverCount }})</b></div>
@@ -321,7 +329,7 @@
               <span class="badge hb" :style="habStyle(room.hab)">{{ room.hab }}</span></div>
             <div class="pgrid" style="margin:8px 0"><pokemon-card v-for="p in room.members" :key="p.slug" :pokemon="p" @open="goToLookup(p.slug)"></pokemon-card></div>
             <div class="muted">{{ room.cover.pick.length }} items furnish this room{{ room.cover.left.length ? ' — no data for: ' + room.cover.left.join(', ') : '' }}:</div>
-            <div class="grid"><item-card v-for="item in room.cover.pick" :key="item.slug" :item="item"></item-card></div>
+            <div class="grid"><item-card v-for="item in room.cover.pick" :key="item.slug" :item="item" @open="goToItem(item)"></item-card></div>
           </div>
         </template>
       </section>
