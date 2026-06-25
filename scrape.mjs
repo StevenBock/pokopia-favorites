@@ -2,11 +2,19 @@
 // Zero deps (Node 18+ fetch). One-time / re-run when Serebii fills more data.
 // ponytail: regex HTML parsing — fragile if Serebii changes table markup;
 //           upgrade to a real parser (cheerio) only if it actually breaks.
-import { writeFile } from 'node:fs/promises'
+import { writeFile, mkdir, access } from 'node:fs/promises'
 
 const BASE = 'https://www.serebii.net/pokemonpokopia'
 const UA = { 'User-Agent': 'Mozilla/5.0 (pokopia-favorites scraper)' }
 const sleep = (ms) => new Promise(r => setTimeout(r, ms))
+const exists = p => access(p).then(() => true, () => false)
+async function download(url, dest) {
+  if (await exists(dest)) return false                  // already mirrored
+  const r = await fetch(url, { headers: UA })
+  if (!r.ok) { console.error('img FAIL', r.status, url); return false }
+  await writeFile(dest, Buffer.from(await r.arrayBuffer()))
+  return true
+}
 
 async function get(url, tries = 3) {
   for (let i = 0; i < tries; i++) {
@@ -143,6 +151,25 @@ await pool([...habNames.keys()], 6, async (slug) => {
   }
 })
 for (const p of outPokemon) if (find[p.slug]) p.find = find[p.slug]
+
+// mirror every referenced image into ./assets and rewrite icon paths to local
+await mkdir(new URL('./assets/pokemon/', import.meta.url), { recursive: true })
+await mkdir(new URL('./assets/items/', import.meta.url), { recursive: true })
+const refs = []                                          // every icon field that needs rewriting
+for (const p of outPokemon) refs.push({ obj: p, url: p.icon, sub: 'pokemon' })
+for (const it of outItems) refs.push({ obj: it, url: it.icon, sub: 'items' })
+for (const h of Object.values(habitats)) for (const r of h.reqs) if (r.icon) refs.push({ obj: r, url: r.icon, sub: 'items' })
+const uniq = new Map()                                    // remoteUrl -> { lp, ok }
+for (const r of refs) if (!uniq.has(r.url)) uniq.set(r.url, { lp: `assets/${r.sub}/${r.url.split('/').pop()}` })
+console.log(`mirroring ${uniq.size} images...`)
+await pool([...uniq.entries()], 8, async ([url, info]) => {
+  const dest = new URL('./' + info.lp, import.meta.url)
+  await download(url, dest)
+  info.ok = await exists(dest)
+})
+const dl = [...uniq.values()].filter(i => i.ok).length
+console.log(`mirrored ${dl}/${uniq.size} images (${uniq.size - dl} missing on Serebii, kept remote url)`)
+for (const r of refs) { const info = uniq.get(r.url); r.obj.icon = info.ok ? info.lp : null }  // local if mirrored, else null (missing on Serebii)
 
 await writeFile(new URL('./data.json', import.meta.url),
   JSON.stringify({ scrapedAt: new Date().toISOString(), source: 'serebii.net', pokemon: outPokemon, items: outItems, habitats }, null, 2))

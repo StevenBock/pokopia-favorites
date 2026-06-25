@@ -24,6 +24,7 @@ node scrape.mjs          # re-scrapes Serebii into data.json
 
 ## Attribution
 
-All Pokémon/item data and images are sourced from and hotlinked to
-[Serebii.net](https://www.serebii.net/pokemonpokopia/). Pokémon and Pokémon Pokopia are
+All Pokémon/item data and images are sourced from
+[Serebii.net](https://www.serebii.net/pokemonpokopia/). Images are mirrored into
+`assets/` (re-run `node scrape.mjs` to refresh them). Pokémon and Pokémon Pokopia are
 © Nintendo / Game Freak / The Pokémon Company. This is a non-commercial fan tool.
