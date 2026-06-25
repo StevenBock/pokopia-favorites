@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pokémon Pokopia favorites lookup</title>
+<style>
+  :root {
+    --bg:#0b1020; --panel:#121a30; --panel2:#0f1730; --line:#22304f;
+    --ink:#e7ecf5; --dim:#8a96b0; --accent:#5b8cff; --tag:#1d2942; --ok:#3ddc97;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+    font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+  h1 { font-size:22px; margin:16px 20px 6px; }
+  a { color:inherit; }
+  .topbar { background:var(--panel2); border-bottom:1px solid var(--line);
+    padding:10px 20px; display:flex; align-items:center; gap:16px; }
+  .brand { font-weight:700; white-space:nowrap; }
+  .brand span { color:var(--accent); }
+  .search { flex:1; }
+  .search input { width:100%; background:#0a1428; border:1px solid var(--line);
+    color:var(--ink); padding:9px 12px; border-radius:8px; font-size:14px; }
+  .tabs { display:flex; gap:22px; padding:0 20px; border-bottom:1px solid var(--line); }
+  .tabs button { background:none; border:0; color:var(--dim); padding:12px 2px;
+    font-size:14px; cursor:pointer; border-bottom:2px solid transparent; }
+  .tabs button.active { color:var(--ink); border-bottom-color:var(--accent); }
+  .wrap { padding:16px 20px 60px; }
+  .muted { color:var(--dim); font-size:12px; }
+  .row { display:flex; align-items:center; gap:10px; }
+  .between { justify-content:space-between; }
+  .badge { font-size:11px; padding:3px 9px; border-radius:999px; background:var(--tag);
+    color:var(--ink); white-space:nowrap; }
+  .hb { font-weight:600; }
+  .tag { font-size:11px; padding:3px 9px; border-radius:6px; background:var(--tag); color:var(--dim); }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:10px;
+    padding:14px 16px; margin-bottom:14px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:8px; }
+  .card { background:var(--panel2); border:1px solid var(--line); border-radius:8px;
+    padding:8px 10px; display:flex; align-items:center; gap:8px; min-height:46px; }
+  .card img { width:28px; height:28px; object-fit:contain; flex:none; }
+  .card .nm { font-size:12px; overflow:hidden; text-overflow:ellipsis; }
+  .sec-h { display:flex; justify-content:space-between; align-items:baseline;
+    margin:16px 0 8px; padding-top:6px; border-top:1px solid var(--line); }
+  .sec-h b { font-size:14px; }
+  .pmon { display:flex; flex-direction:column; align-items:center; gap:2px;
+    background:var(--panel2); border:1px solid var(--line); border-radius:8px; padding:8px; }
+  .pmon img { width:48px; height:48px; object-fit:contain; }
+  .pmon .nm { font-weight:600; font-size:13px; }
+  .pgrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(110px,1fr)); gap:8px; margin-top:10px; }
+  .slots { display:grid; grid-template-columns:repeat(5,1fr); gap:10px; margin-bottom:14px; }
+  .slot { background:var(--panel); border:1px solid var(--line); border-radius:10px;
+    padding:10px; min-height:78px; position:relative; }
+  .slot .lab { font-size:10px; color:var(--dim); letter-spacing:.06em; }
+  .slot input { width:100%; background:#0a1428; border:1px solid var(--line);
+    color:var(--ink); padding:7px 9px; border-radius:6px; margin-top:18px; }
+  .slot .x { position:absolute; top:6px; right:8px; cursor:pointer; color:var(--dim); }
+  .slot.filled .row { margin-top:4px; }
+  .ac { position:relative; }
+  .acbox { position:absolute; z-index:9; left:0; right:0; background:#0a1428;
+    border:1px solid var(--line); border-radius:6px; max-height:240px; overflow:auto; }
+  .acbox div { padding:6px 10px; cursor:pointer; }
+  .acbox div:hover { background:var(--tag); }
+  .note { padding:10px 12px; border-radius:8px; margin-bottom:14px; }
+  .note.ok { background:rgba(61,220,151,.1); border:1px solid rgba(61,220,151,.3); color:var(--ok); }
+  .note.bad { background:rgba(255,107,107,.1); border:1px solid rgba(255,107,107,.3); color:#ff9a9a; }
+  .coverbadge { background:var(--accent); color:#fff; font-size:10px; padding:2px 7px; border-radius:6px; }
+  .covnames { font-size:10px; color:var(--dim); margin-top:3px; }
+  .covcard { flex-direction:column; align-items:flex-start; }
+</style>
+</head>
+<body>
+<h1>Pokémon Pokopia favorites lookup</h1>
+<div class="topbar">
+  <div class="brand">Poké<span>Opia</span></div>
+  <div class="search"><input id="globalSearch" placeholder="#001 Bulbasaur"></div>
+</div>
+<div class="tabs">
+  <button data-tab="lookup" class="active">Lookup</button>
+  <button data-tab="sharing">Sharing Groups</button>
+  <button data-tab="custom">Custom Group</button>
+</div>
+<div class="wrap">
+  <div id="lookup"></div>
+  <div id="sharing" hidden></div>
+  <div id="custom" hidden></div>
+</div>
+
+<script>
+const HAB_COLOR = { Bright:'#caa53d', Warm:'#c0673a', Cool:'#3a78c0', Dark:'#5b5170',
+  Cold:'#5aa6c0', Hot:'#c0473a', Wet:'#3a8fc0', Dry:'#b08a4a', Lush:'#4aa84a' };
+const habStyle = h => `background:${HAB_COLOR[h]||'#3a4663'};color:#fff`;
+
+let DATA = { pokemon:[], items:[] };
+const $ = s => document.querySelector(s);
+const byCat = {};           // category -> items[]
+const esc = s => (s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+fetch('./data.json').then(r => r.json()).then(d => {
+  DATA = d;
+  for (const it of d.items) for (const c of it.categories) (byCat[c] ||= []).push(it);
+  renderLookup(d.pokemon[0]);
+  renderSharing();
+  renderCustom();
+}).catch(() => { $('#lookup').innerHTML = '<div class="note bad">Could not load data.json — serve this folder over http (e.g. <code>python3 -m http.server</code>) and run the scraper first.</div>'; });
+
+// --- tabs ---
+document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('active', x === b));
+  ['lookup','sharing','custom'].forEach(t => $('#'+t).hidden = t !== b.dataset.tab);
+});
+
+// --- global search drives Lookup ---
+$('#globalSearch').addEventListener('input', e => {
+  const q = e.target.value.toLowerCase().replace('#','').trim();
+  if (!q) return;
+  const p = DATA.pokemon.find(p => p.name.toLowerCase().includes(q) || String(p.id).padStart(3,'0') === q.padStart(3,'0'));
+  if (p) { renderLookup(p); document.querySelector('.tabs button').click(); }
+});
+
+const itemCard = it => `<div class="card"><img src="${it.icon}" alt="" loading="lazy"><span class="nm">${esc(it.name)}</span></div>`;
+
+// ---------- TAB 1: LOOKUP ----------
+function renderLookup(p) {
+  if (!p) return;
+  let total = 0;
+  const secs = p.favorites.map(cat => {
+    const its = byCat[cat] || [];
+    total += its.length;
+    return `<div class="sec-h"><b>${esc(cat)}</b><span class="muted">${its.length} items</span></div>
+      <div class="grid">${its.map(itemCard).join('')}</div>`;
+  }).join('');
+  $('#lookup').innerHTML = `
+    <div class="panel row between">
+      <div class="row"><span class="muted">#${String(p.id).padStart(3,'0')}</span>
+        <b style="font-size:18px">${esc(p.name)}</b></div>
+      <span class="badge hb" style="${habStyle(p.habitat)}">${esc(p.habitat)}</span>
+    </div>
+    <div class="row between"><span class="muted">MATCHING ITEMS</span>
+      <span class="muted">${total} items across ${p.favorites.length} categories</span></div>
+    ${secs}`;
+}
+
+// ---------- TAB 2: SHARING GROUPS ----------
+let sharingGroups = [];
+function renderSharing() {
+  const map = new Map();
+  for (const p of DATA.pokemon) {
+    const key = p.habitat + '|' + [...p.favorites].sort().join(',');
+    (map.get(key) || map.set(key, []).get(key)).push(p);
+  }
+  sharingGroups = [...map.values()].filter(g => g.length >= 2)
+    .sort((a, b) => b.length - a.length);
+  $('#sharing').innerHTML = `
+    <div class="panel"><input id="shFilter" style="width:100%;background:#0a1428;border:1px solid var(--line);color:var(--ink);padding:9px 12px;border-radius:8px"
+      placeholder="Search a Pokémon (e.g. Pikachu) for roommates, or filter groups by category..."></div>
+    <div class="muted" id="shCount"></div><div id="shList"></div>`;
+  $('#shFilter').addEventListener('input', e => paintSharing(e.target.value.toLowerCase()));
+  paintSharing('');
+}
+// resolve a query to a single Pokémon (dex #, exact name, or unique prefix); else null
+function resolveMon(q) {
+  if (!q) return null;
+  if (/^\d+$/.test(q)) return DATA.pokemon.find(p => p.id === +q) || null;
+  const exact = DATA.pokemon.find(p => p.name.toLowerCase() === q);
+  if (exact) return exact;
+  const pre = DATA.pokemon.filter(p => p.name.toLowerCase().startsWith(q));
+  return pre.length === 1 ? pre[0] : null;
+}
+function paintSharing(q) {
+  q = (q || '').replace('#', '').trim();
+  const target = resolveMon(q);
+  if (target) return renderCompat(target);     // searched a specific Pokémon -> roommate view
+  const groups = sharingGroups.filter(g =>
+    !q || g.some(p => p.name.toLowerCase().includes(q)) || g[0].favorites.some(c => c.toLowerCase().includes(q)));
+  $('#shCount').textContent = `${groups.length} groups with identical habitat & all 5 favorites`
+    + (q ? ' — type a full Pokémon name for partial roommate matches' : '');
+  $('#shList').innerHTML = groups.map(g => {
+    const h = g[0];
+    return `<div class="panel">
+      <div class="row between">
+        <b>${g.map(p => esc(p.name)).join(', ')}</b>
+        <span class="row"><span class="badge hb" style="${habStyle(h.habitat)}">${esc(h.habitat)}</span>
+          <span class="muted">${g.length} Pokémon</span></span>
+      </div>
+      <div class="row" style="flex-wrap:wrap;gap:6px;margin:8px 0">
+        ${h.favorites.map(c => `<span class="tag">${esc(c)}</span>`).join('')}</div>
+      <div class="pgrid">${g.map(p => pmonCard(p)).join('')}</div>
+    </div>`;
+  }).join('') || '<div class="muted">No groups match.</div>';
+}
+// roommate view for one Pokémon: same habitat, grouped by # of shared favorites
+function renderCompat(t) {
+  const tf = new Set(t.favorites);
+  const mates = DATA.pokemon
+    .filter(p => p.id !== t.id && p.habitat === t.habitat)
+    .map(p => ({ p, shared: p.favorites.filter(c => tf.has(c)) }))
+    .filter(m => m.shared.length >= 1)
+    .sort((a, b) => b.shared.length - a.shared.length || a.p.id - b.p.id);
+  const tiers = [5, 4, 3, 2, 1].map(n => ({ n, list: mates.filter(m => m.shared.length === n) })).filter(x => x.list.length);
+  $('#shCount').textContent = `Roommates for ${t.name} — same habitat (${t.habitat}), ranked by shared favorites`;
+  $('#shList').innerHTML = `
+    <div class="panel">
+      <div class="row between"><b>${esc(t.name)} <span class="muted">#${String(t.id).padStart(3,'0')}</span></b>
+        <span class="badge hb" style="${habStyle(t.habitat)}">${esc(t.habitat)}</span></div>
+      <div class="row" style="flex-wrap:wrap;gap:6px;margin-top:8px">${t.favorites.map(c => `<span class="tag">${esc(c)}</span>`).join('')}</div>
+    </div>`
+    + (tiers.length ? tiers.map(tier => `
+      <div class="sec-h"><b>${tier.n}/5 shared favorites${tier.n === 5 ? ' — perfect roommate' : ''}</b>
+        <span class="muted">${tier.list.length} Pokémon</span></div>
+      <div class="pgrid">${tier.list.map(m => pmonCard(m.p, m.shared)).join('')}</div>`).join('')
+      : `<div class="muted">No same-habitat Pokémon share any favorites with ${esc(t.name)}.</div>`);
+}
+const pmonCard = (p, shared) => `<div class="pmon"><img src="${p.icon}" alt="" loading="lazy">
+  <span class="nm">${esc(p.name)}</span><span class="muted">#${String(p.id).padStart(3,'0')}</span>
+  ${p.flavor ? `<span class="muted">${esc(p.flavor)} flavors</span>` : ''}
+  ${shared && shared.length ? `<span class="covnames" style="text-align:center">${shared.map(esc).join(', ')}</span>` : ''}</div>`;
+
+// ---------- TAB 3: CUSTOM GROUP ----------
+let slots = [null, null, null, null, null];
+function renderCustom() {
+  $('#custom').innerHTML = `
+    <div class="muted">Select up to 5 Pokémon to see which items they share and which items span multiple favorites.</div>
+    <div class="slots" id="slots"></div>
+    <div id="cgResult"></div>`;
+  paintSlots(); paintCustom();
+}
+function paintSlots() {
+  $('#slots').innerHTML = slots.map((p, i) => {
+    if (p) return `<div class="slot filled"><span class="lab">SLOT ${i+1}</span>
+      <span class="x" data-rm="${i}">✕</span>
+      <div class="row" style="margin-top:16px"><img src="${p.icon}" width="40" height="40" alt="">
+        <div><div style="font-weight:600">${esc(p.name)}</div>
+        <span class="badge hb" style="${habStyle(p.habitat)}">${esc(p.habitat)}</span></div></div></div>`;
+    return `<div class="slot"><span class="lab">SLOT ${i+1}</span>
+      <div class="ac"><input data-slot="${i}" placeholder="Search Pokémon..."><div class="acbox" hidden></div></div></div>`;
+  }).join('');
+  $('#slots').querySelectorAll('[data-rm]').forEach(x => x.onclick = () => { slots[+x.dataset.rm] = null; paintSlots(); paintCustom(); });
+  $('#slots').querySelectorAll('input[data-slot]').forEach(inp => {
+    const box = inp.nextElementSibling;
+    inp.addEventListener('input', () => {
+      const q = inp.value.toLowerCase().trim();
+      const hits = q ? DATA.pokemon.filter(p => p.name.toLowerCase().includes(q)).slice(0, 8) : [];
+      box.hidden = !hits.length;
+      box.innerHTML = hits.map(p => `<div data-id="${p.id}">#${String(p.id).padStart(3,'0')} ${esc(p.name)}</div>`).join('');
+      box.querySelectorAll('[data-id]').forEach(d => d.onclick = () => {
+        slots[+inp.dataset.slot] = DATA.pokemon.find(p => p.id === +d.dataset.id);
+        paintSlots(); paintCustom();
+      });
+    });
+  });
+}
+function paintCustom() {
+  const sel = slots.filter(Boolean);
+  const out = $('#cgResult');
+  if (sel.length < 2) { out.innerHTML = '<div class="muted">Add at least 2 Pokémon.</div>'; return; }
+
+  const habs = [...new Set(sel.map(p => p.habitat))];
+  const habNote = habs.length === 1
+    ? `<div class="note ok">✓ All ${sel.length} Pokémon share the <b>${esc(habs[0])}</b> habitat — they can live together comfortably.</div>`
+    : `<div class="note bad">✕ Different habitats (${habs.map(esc).join(', ')}) — they won't all be comfortable together.</div>`;
+
+  // categories favored by ≥2 selected
+  const catCount = {};
+  for (const p of sel) for (const c of p.favorites) (catCount[c] ||= []).push(p);
+  const multiCats = Object.keys(catCount).filter(c => catCount[c].length >= 2).sort();
+
+  let coverCount = 0;
+  const sections = multiCats.map(cat => {
+    const covered = catCount[cat];                       // selected pokemon that like this category
+    const its = byCat[cat] || [];
+    coverCount += its.length;
+    const all = covered.length === sel.length;
+    return `<div class="sec-h"><b>${esc(cat)}</b><span class="muted">${its.length} shared items</span></div>
+      <div class="grid">${its.map(it => `<div class="card covcard">
+        <span class="coverbadge">${all ? 'All '+sel.length+' Pokémon' : covered.length+' Pokémon'}</span>
+        <span class="nm" style="margin-top:4px">${esc(it.name)}</span>
+        <span class="covnames">${covered.map(p => esc(p.name)).join(', ')}</span></div>`).join('')}</div>`;
+  }).join('') || '<div class="muted">No favorite categories are shared by 2+ of these Pokémon.</div>';
+
+  out.innerHTML = habNote + greedyCover(sel) +
+    `<div class="row between" style="margin-top:6px"><b>⚲ ITEMS COVERING MULTIPLE POKÉMON (${coverCount})</b></div>
+     <div class="muted">Each category has items that satisfy more than one Pokémon — place one item from each to cover multiple at once.</div>
+     ${sections}`;
+}
+// greedy minimum item set covering every favorite category of every selected Pokémon
+// ponytail: greedy set-cover (not provably minimal); fine for ≤4 Pokémon / ≤20 categories.
+function greedyCover(sel) {
+  const need = new Set();
+  for (const p of sel) for (const c of p.favorites) need.add(c);
+  const pick = [];
+  const pool = DATA.items.slice();
+  while (need.size) {
+    let best = null, gain = 0;
+    for (const it of pool) {
+      const g = it.categories.filter(c => need.has(c)).length;
+      if (g > gain) { gain = g; best = it; }
+    }
+    if (!best) break;                                    // some category has no known item
+    best.categories.filter(c => need.has(c)).forEach(c => need.delete(c));
+    pick.push(best);
+  }
+  const left = [...need];
+  return `<div class="panel">
+    <b>Suggested minimal item set</b> <span class="muted">— ${pick.length} items cover every favorite of all ${sel.length} Pokémon</span>
+    <div class="grid" style="margin-top:8px">${pick.map(itemCard).join('')}</div>
+    ${left.length ? `<div class="muted" style="margin-top:6px">No item data yet for: ${left.map(esc).join(', ')}</div>` : ''}</div>`;
+}
+</script>
+</body>
+</html>
